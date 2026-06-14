@@ -2,6 +2,10 @@
 # Builds the autopilot-jobhunt MCP server (stdio transport).
 FROM python:3.11-slim
 
+LABEL org.opencontainers.image.source="https://github.com/tarunlnmiit/autopilot-jobhunt" \
+      org.opencontainers.image.description="Self-hosted AI job agent — MCP server" \
+      org.opencontainers.image.licenses="MIT"
+
 WORKDIR /app
 
 # Install build deps first for layer caching.
