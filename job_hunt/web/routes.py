@@ -146,7 +146,8 @@ def suggest_start(count: int = Body(8, embed=True)) -> dict:
     n = max(1, min(20, count))
 
     def job():
-        return {"kind": "suggest", "suggestions": suggest_companies(cfg, resume, existing, n)}
+        return {"kind": "suggest",
+                "suggestions": suggest_companies(cfg, resume, existing, n, on_token=jobs.emit_token)}
 
     try:
         jobs.start("suggest", job)
@@ -165,7 +166,7 @@ def review_start() -> dict:
     companies = _read_json(paths.companies_path(), [])
 
     def job():
-        flagged = review_companies(cfg, resume, companies) if companies else []
+        flagged = review_companies(cfg, resume, companies, on_token=jobs.emit_token) if companies else []
         return {"kind": "review", "flagged": flagged, "reviewed": len(companies)}
 
     try:
@@ -178,6 +179,16 @@ def review_start() -> dict:
 @router.get("/companies/jobs/result")
 def jobs_result() -> dict:
     return {**jobs.status(), "result": jobs.result}
+
+
+def _sse(item: dict) -> str:
+    # Encode a job item as an SSE event. Multi-line values become multiple
+    # `data:` lines (EventSource rejoins them with "\n"). Token chunks use a
+    # distinct `token` event so the UI appends them inline; status lines are the
+    # default `message` event and get their own row.
+    body = "".join(f"data: {ln}\n" for ln in item["v"].split("\n"))
+    prefix = "event: token\n" if item["t"] == "tok" else ""
+    return f"{prefix}{body}\n"
 
 
 @router.get("/companies/jobs/stream")
@@ -197,7 +208,7 @@ def jobs_stream() -> StreamingResponse:
                 if item is None:
                     yield "event: end\ndata: done\n\n"
                     break
-                yield f"data: {item}\n\n"
+                yield _sse(item)
         finally:
             jobs.unsubscribe(q)
 

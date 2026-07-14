@@ -110,7 +110,7 @@ def test_suggest_job(client, monkeypatch):
     c.put("/api/resume", json={"content": "Senior ML engineer"})
     monkeypatch.setattr(
         "job_hunt.suggester.suggest_companies",
-        lambda cfg, resume, existing, count: [
+        lambda cfg, resume, existing, count, on_token=None: [
             {"name": "Cohere", "careers_url": "https://cohere.com/careers",
              "search_domain": "cohere.com", "location": "Toronto", "region": "NA",
              "reason": "NLP", "exists": False}],
@@ -136,7 +136,7 @@ def test_review_job(client, monkeypatch):
          "search_domain": "acmebank.com", "location": "NY", "region": "NA"}])
     monkeypatch.setattr(
         "job_hunt.suggester.review_companies",
-        lambda cfg, resume, companies: [
+        lambda cfg, resume, companies, on_token=None: [
             {"index": 0, "name": "Acme Bank", "search_domain": "acmebank.com", "reason": "finance"}],
     )
     assert c.post("/api/companies/review").status_code == 200
@@ -151,12 +151,31 @@ def test_review_requires_resume(client):
     assert r.status_code == 400 and "resume" in r.json()["detail"].lower()
 
 
+def test_suggest_job_streams_tokens(client, monkeypatch):
+    c, _ = client
+    c.put("/api/config", json={"candidate": {"resume_path": "resume/r.md"}})
+    c.put("/api/resume", json={"content": "resume"})
+
+    # A fake suggester that streams a couple of tokens through on_token.
+    def fake(cfg, resume, existing, count, on_token=None):
+        if on_token:
+            on_token("Cohere\n")
+            on_token("Hugging Face")
+        return [{"name": "Cohere", "search_domain": "cohere.com", "reason": "x", "exists": False}]
+
+    monkeypatch.setattr("job_hunt.suggester.suggest_companies", fake)
+    assert c.post("/api/companies/suggest", json={"count": 2}).status_code == 200
+    _wait_job(c)
+    stream = c.get("/api/companies/jobs/stream").text  # replays buffered items
+    assert "event: token" in stream and "Cohere" in stream and "Hugging Face" in stream
+
+
 def test_job_reports_failure_inline(client, monkeypatch):
     c, _ = client
     c.put("/api/config", json={"candidate": {"resume_path": "resume/r.md"}})
     c.put("/api/resume", json={"content": "resume"})
 
-    def boom(cfg, resume, existing, count):
+    def boom(cfg, resume, existing, count, on_token=None):
         raise RuntimeError("LLM unreachable")
 
     monkeypatch.setattr("job_hunt.suggester.suggest_companies", boom)

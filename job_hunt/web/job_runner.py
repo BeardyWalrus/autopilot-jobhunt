@@ -35,7 +35,9 @@ class _QueueLogHandler(logging.Handler):
 class JobRunner:
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._lines: deque[str] = deque(maxlen=_MAX_BUFFER)
+        # Items are dicts: {"t": "line"|"tok", "v": str}. "line" = a status/log
+        # line (own row); "tok" = a raw model output chunk (appended inline).
+        self._items: deque[dict] = deque(maxlen=_MAX_BUFFER)
         self._subs: list[queue.Queue] = []
         self._thread: threading.Thread | None = None
         self.name: str | None = None
@@ -66,14 +68,14 @@ class JobRunner:
             self.ok = None
             self.error = None
             self.result = None
-            self._lines.clear()
+            self._items.clear()
             self.started_at = datetime.now(timezone.utc).isoformat()
-        self._emit(f"$ {name}")
+        self._emit_line(f"$ {name}")
         self._thread = threading.Thread(target=self._run, args=(target,), daemon=True)
         self._thread.start()
 
     def _run(self, target) -> None:
-        handler = _QueueLogHandler(self._emit)
+        handler = _QueueLogHandler(self._emit_line)
         handler.setLevel(logging.INFO)
         handler.setFormatter(logging.Formatter("%(message)s"))
         logger.addHandler(handler)
@@ -81,23 +83,30 @@ class JobRunner:
         try:
             self.result = target()
             self.ok = True
-            self._emit(f"-- done ({time.time() - t0:.0f}s) --")
+            self._emit_line(f"-- done ({time.time() - t0:.0f}s) --")
         except Exception as e:  # surfaced to the browser as the final line + status
             self.ok = False
             self.error = str(e)
-            self._emit(f"-- error: {e} --")
+            self._emit_line(f"-- error: {e} --")
         finally:
             logger.removeHandler(handler)
             self.running = False
             self.done = True
             self._broadcast(None)
 
-    def _emit(self, line: str) -> None:
-        with self._lock:
-            self._lines.append(line)
-        self._broadcast(line)
+    def _emit_line(self, text: str) -> None:
+        self._push({"t": "line", "v": text})
 
-    def _broadcast(self, item: str | None) -> None:
+    def emit_token(self, text: str) -> None:
+        """Called with each streamed model output chunk (appended inline in the UI)."""
+        self._push({"t": "tok", "v": text})
+
+    def _push(self, item: dict) -> None:
+        with self._lock:
+            self._items.append(item)
+        self._broadcast(item)
+
+    def _broadcast(self, item: dict | None) -> None:
         for q in list(self._subs):
             try:
                 q.put_nowait(item)
@@ -107,9 +116,9 @@ class JobRunner:
     def subscribe(self) -> queue.Queue:
         q: queue.Queue = queue.Queue(maxsize=_MAX_BUFFER)
         with self._lock:
-            for line in self._lines:
+            for item in self._items:
                 try:
-                    q.put_nowait(line)
+                    q.put_nowait(item)
                 except queue.Full:
                     break
             self._subs.append(q)
