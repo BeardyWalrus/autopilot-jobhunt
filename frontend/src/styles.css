@@ -105,6 +105,12 @@ th.sortable:hover { color: var(--text); }
 td.url { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 td.nowrap { white-space: nowrap; }
 td.nowrap a + button { margin-left: 10px; }
+a.apply {
+  display: inline-block; padding: 5px 12px; border-radius: 6px;
+  background: rgba(79, 140, 255, 0.12); border: 1px solid var(--accent);
+  color: var(--accent); font-size: 13px; text-decoration: none; white-space: nowrap;
+}
+a.apply:hover { background: rgba(79, 140, 255, 0.22); text-decoration: none; }
 
 .log {
   background: #0b0e12; border: 1px solid var(--border); border-radius: 8px;

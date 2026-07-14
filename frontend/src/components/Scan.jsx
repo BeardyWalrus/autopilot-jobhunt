@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api.js'
+import { absUrl } from '../util.js'
 
 export default function Scan() {
   const [running, setRunning] = useState(false)
@@ -246,7 +247,7 @@ export default function Scan() {
                   <td className="small">{j.stack}</td>
                   <td className="small">{j.reason}</td>
                   <td className="nowrap">
-                    {j.url && <a href={j.url} target="_blank" rel="noreferrer">Apply</a>}
+                    {j.url && <a className="apply" href={absUrl(j.url)} target="_blank" rel="noopener noreferrer">Apply ↗</a>}
                     <button className="link danger" onClick={() => deleteResult(j)} title="Remove from results">delete</button>
                   </td>
                 </tr>

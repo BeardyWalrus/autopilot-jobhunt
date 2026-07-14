@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api.js'
+import { absUrl } from '../util.js'
 
 const BLANK = { name: '', careers_url: '', search_domain: '', location: '', region: '' }
 
@@ -328,7 +329,7 @@ export default function Boards() {
               <div className="suggestion" key={i}>
                 <div className="sug-main">
                   <div><strong>{s.name}</strong> <span className="muted small">{s.region} · {s.location}</span></div>
-                  <div className="url small"><a href={s.careers_url} target="_blank" rel="noreferrer">{s.careers_url || s.search_domain}</a></div>
+                  <div className="url small"><a href={absUrl(s.careers_url)} target="_blank" rel="noopener noreferrer">{s.careers_url || s.search_domain}</a></div>
                   {s.reason && <div className="muted small">{s.reason}</div>}
                 </div>
                 {s.exists
@@ -361,7 +362,7 @@ export default function Boards() {
                     </label>
                   </td>
                   <td>{c.name}</td>
-                  <td className="url"><a href={c.careers_url} target="_blank" rel="noreferrer">{c.careers_url}</a></td>
+                  <td className="url"><a href={absUrl(c.careers_url)} target="_blank" rel="noopener noreferrer">{c.careers_url}</a></td>
                   <td>{c.search_domain}</td>
                   <td>{c.location}</td>
                   <td>{c.region}</td>
