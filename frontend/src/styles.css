@@ -108,6 +108,13 @@ td.url { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-spac
 .badge.live { color: var(--ok); background: rgba(52, 199, 123, 0.12); }
 .badge.idle { color: var(--muted); background: var(--panel-2); }
 
+.suggest-btn {
+  display: block; width: 100%; margin: 14px 0 4px; padding: 11px 16px;
+  white-space: nowrap; text-align: center; font-size: 14px;
+  background: rgba(79, 140, 255, 0.1); border-color: var(--accent); color: var(--accent);
+}
+.suggest-btn:hover:not(:disabled) { background: rgba(79, 140, 255, 0.18); }
+
 .suggestions { margin-top: 16px; padding: 14px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; }
 .suggestions h3 { margin: 0 0 4px; font-size: 14px; }
 .suggestion { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
