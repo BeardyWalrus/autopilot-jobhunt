@@ -72,6 +72,28 @@ def test_company_validation_rejects_missing_fields(client):
     assert r.status_code == 400 and "careers_url" in r.json()["detail"]
 
 
+def test_suggest_endpoint(client, monkeypatch):
+    c, tmp = client
+    c.put("/api/config", json={"candidate": {"resume_path": "resume/r.md"}})
+    c.put("/api/resume", json={"content": "Senior ML engineer"})
+    monkeypatch.setattr(
+        "job_hunt.suggester.suggest_companies",
+        lambda cfg, resume, existing, count: [
+            {"name": "Cohere", "careers_url": "https://cohere.com/careers",
+             "search_domain": "cohere.com", "location": "Toronto", "region": "NA",
+             "reason": "NLP", "exists": False}],
+    )
+    r = c.post("/api/companies/suggest", json={"count": 5})
+    assert r.status_code == 200 and r.json()["count"] == 1
+    assert r.json()["suggestions"][0]["name"] == "Cohere"
+
+
+def test_suggest_endpoint_requires_resume(client):
+    c, _ = client
+    r = c.post("/api/companies/suggest", json={"count": 5})
+    assert r.status_code == 400 and "resume" in r.json()["detail"].lower()
+
+
 def test_company_enabled_flag_preserved(client):
     c, tmp = client
     base = {"careers_url": "https://x.co/careers", "search_domain": "x.co",

@@ -10,6 +10,7 @@ from pathlib import Path
 from job_hunt.drafter import draft_application
 from job_hunt.main import export_jobs, load_companies, load_config
 from job_hunt.scanner import run_scan
+from job_hunt.suggester import suggest_companies
 
 
 def tool_scan(config_path: str = "config.json", companies_path: str = "companies.json") -> str:
@@ -50,6 +51,40 @@ def tool_draft(job_ref: str, config_path: str = "config.json") -> str:
         config = load_config()
         draft_application(config, job_ref)
         return "Application drafted in output/ directory."
+    finally:
+        os.chdir(old_cwd)
+
+
+def tool_suggest_companies(count: int = 8, config_path: str = "config.json") -> str:
+    """
+    Suggest companies to scan, based on the candidate's resume + profile.
+    Returns a human-readable list (best-guess careers URLs — review before adding).
+    """
+    import os
+    old_cwd = Path.cwd()
+    project_root = Path(config_path).parent.resolve()
+    os.chdir(project_root)
+    try:
+        config = load_config()
+        resume_path = Path(config.get("candidate", {}).get("resume_path", "resume/YOUR_RESUME.md"))
+        if not resume_path.exists():
+            return f"No resume found at {resume_path}. Add your resume first."
+        resume = resume_path.read_text(encoding="utf-8")
+        try:
+            existing = load_companies()
+        except SystemExit:
+            existing = []
+        suggestions = suggest_companies(config, resume, existing, count)
+        if not suggestions:
+            return "No suggestions returned. Try again or check your LLM settings."
+        lines = [f"{len(suggestions)} suggested companies (best-guess URLs — review before adding):", ""]
+        for s in suggestions:
+            tag = " [already tracked]" if s.get("exists") else ""
+            lines.append(f"- {s['name']} ({s['region']}, {s['location']}){tag}")
+            lines.append(f"    {s['careers_url'] or s['search_domain']}")
+            if s.get("reason"):
+                lines.append(f"    {s['reason']}")
+        return "\n".join(lines)
     finally:
         os.chdir(old_cwd)
 

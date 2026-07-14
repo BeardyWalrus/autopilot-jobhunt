@@ -1,0 +1,136 @@
+"""Suggest companies to scan, based on the candidate's resume + profile.
+
+An LLM reads the resume and proposes real companies that hire for the
+candidate's roles/skills. Output is parsed tolerantly (same philosophy as the
+scorer) so weak local models still return usable suggestions.
+
+Note: the LLM's careers_url is a best guess and may be wrong — suggestions are
+meant to be reviewed before being added to companies.json.
+"""
+import re
+
+from job_hunt.llm_utils import chat_with_llm
+from job_hunt.log import get_logger
+from job_hunt.scanner import _build_candidate_profile
+
+logger = get_logger()
+
+SUGGEST_PROMPT = """You are a career researcher helping a candidate find companies to apply to.
+
+CANDIDATE PROFILE:
+{profile}
+
+RESUME:
+{resume}
+{avoid_clause}
+Suggest {count} REAL companies that frequently hire for this candidate's roles and
+skills and would be a strong fit. Prefer companies actually known to hire in the
+candidate's field and target regions.
+
+For EACH company output one block in EXACTLY this format. Separate blocks with a
+line containing only three dashes (---). Output nothing else.
+
+NAME: company name
+CAREERS_URL: best-guess careers page URL (https://...)
+DOMAIN: primary domain, e.g. company.com
+LOCATION: HQ city, country (or Remote)
+REGION: one of EU, NA, APAC, LATAM, MEA, Global
+REASON: one sentence on why it fits this candidate
+
+Only suggest real companies."""
+
+_ALIASES = {
+    "name": "name", "company": "name",
+    "careers_url": "careers_url", "careers": "careers_url", "url": "careers_url",
+    "domain": "search_domain", "search_domain": "search_domain", "website": "search_domain",
+    "location": "location", "hq": "location",
+    "region": "region",
+    "reason": "reason", "why": "reason",
+}
+_KV_RE = re.compile(r"^\s*([A-Za-z_ ]+?)\s*[:=]\s*(.*)$")
+
+
+def _normalize(rec: dict) -> dict | None:
+    name = (rec.get("name") or "").strip()
+    if not name:
+        return None
+    domain = (rec.get("search_domain") or "").strip().lower()
+    domain = re.sub(r"^https?://", "", domain).strip("/")
+    url = (rec.get("careers_url") or "").strip()
+    if not domain and url:
+        m = re.search(r"https?://([^/]+)", url)
+        if m:
+            domain = m.group(1).lower()
+    return {
+        "name": name,
+        "careers_url": url,
+        "search_domain": domain,
+        "location": (rec.get("location") or "").strip() or "Unknown",
+        "region": (rec.get("region") or "").strip() or "Global",
+        "reason": (rec.get("reason") or "").strip(),
+    }
+
+
+def _parse_suggestions(raw: str) -> list[dict]:
+    records: list[dict] = []
+    cur: dict = {}
+
+    def flush() -> None:
+        if cur:
+            norm = _normalize(cur)
+            if norm:
+                records.append(norm)
+            cur.clear()
+
+    for line in raw.splitlines():
+        s = line.strip()
+        if not s:
+            continue
+        if set(s) <= {"-", "="} and len(s) >= 3:
+            flush()
+            continue
+        m = _KV_RE.match(s)
+        if not m:
+            continue
+        key = _ALIASES.get(m.group(1).strip().lower())
+        if key is None:
+            continue
+        if key == "name" and ("name" in cur):
+            flush()
+        cur[key] = m.group(2).strip()
+    flush()
+    return records
+
+
+def suggest_companies(
+    config: dict, resume: str, existing: list[dict] | None = None, count: int = 8
+) -> list[dict]:
+    """Return up to `count` suggested companies. Each dict has the companies.json
+    fields plus `reason` and `exists` (already tracked, matched by domain)."""
+    existing = existing or []
+    avoid_clause = ""
+    if existing:
+        names = sorted({c.get("name", "") for c in existing if c.get("name")})
+        if names:
+            joined = ", ".join(names)[:2000]
+            avoid_clause = f"\nThe candidate already tracks these — do NOT suggest them again:\n{joined}\n"
+
+    prompt = SUGGEST_PROMPT.format(
+        profile=_build_candidate_profile(config),
+        resume=resume[:3000],
+        count=count,
+        avoid_clause=avoid_clause,
+    )
+    logger.info(f"Suggesting {count} companies from resume via LLM...")
+    raw = chat_with_llm(config, messages=[{"role": "user", "content": prompt}], temperature=0.4)
+    suggestions = _parse_suggestions(raw)
+
+    existing_domains = {c.get("search_domain", "").lower() for c in existing if c.get("search_domain")}
+    existing_names = {c.get("name", "").lower() for c in existing if c.get("name")}
+    for s in suggestions:
+        s["exists"] = (
+            (s["search_domain"] and s["search_domain"] in existing_domains)
+            or s["name"].lower() in existing_names
+        )
+    logger.info(f"Parsed {len(suggestions)} company suggestions")
+    return suggestions

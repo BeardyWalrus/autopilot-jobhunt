@@ -110,6 +110,24 @@ def add_company(company: dict = Body(...)) -> dict:
     return {"companies": companies, "count": len(companies)}
 
 
+@router.post("/companies/suggest")
+def suggest(count: int = Body(8, embed=True)) -> dict:
+    from job_hunt.suggester import suggest_companies
+
+    cfg = _read_json(paths.config_path(), {})
+    rpath = paths.resume_path(cfg)
+    resume = rpath.read_text(encoding="utf-8") if rpath.exists() else ""
+    if not resume.strip():
+        raise HTTPException(400, "No resume found — add one on the Resume tab first.")
+    existing = _read_json(paths.companies_path(), [])
+    count = max(1, min(20, count))
+    try:
+        suggestions = suggest_companies(cfg, resume, existing, count)
+    except Exception as e:
+        raise HTTPException(502, f"Suggestion failed: {e}")
+    return {"suggestions": suggestions, "count": len(suggestions)}
+
+
 @router.delete("/companies/{index}")
 def delete_company(index: int) -> dict:
     companies = _read_json(paths.companies_path(), [])
