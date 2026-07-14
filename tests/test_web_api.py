@@ -145,6 +145,30 @@ def test_review_job(client, monkeypatch):
     assert r["result"]["flagged"][0]["name"] == "Acme Bank" and r["result"]["reviewed"] == 1
 
 
+def test_review_excludes_disabled_boards(client, monkeypatch):
+    c, _ = client
+    c.put("/api/config", json={"candidate": {"resume_path": "resume/r.md"}})
+    c.put("/api/resume", json={"content": "resume"})
+    c.put("/api/companies", json=[
+        {"name": "On", "careers_url": "https://on.co/c", "search_domain": "on.co",
+         "location": "L", "region": "EU"},
+        {"name": "Off", "careers_url": "https://off.co/c", "search_domain": "off.co",
+         "location": "L", "region": "EU", "enabled": False},
+    ])
+    seen = {}
+
+    def fake(cfg, resume, companies, on_token=None):
+        seen["names"] = [x["name"] for x in companies]
+        return []
+
+    monkeypatch.setattr("job_hunt.suggester.review_companies", fake)
+    c.post("/api/companies/review", json={"include_disabled": False})
+    r = _wait_job(c)
+    assert r["ok"] is True
+    assert seen["names"] == ["On"]  # the disabled "Off" board is excluded
+    assert r["result"]["reviewed"] == 1
+
+
 def test_review_requires_resume(client):
     c, _ = client
     r = c.post("/api/companies/review")

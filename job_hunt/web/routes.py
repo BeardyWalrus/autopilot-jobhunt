@@ -157,13 +157,19 @@ def suggest_start(count: int = Body(8, embed=True)) -> dict:
 
 
 @router.post("/companies/review")
-def review_start() -> dict:
-    """Start a background review job (see /companies/jobs/* for stream + result)."""
+def review_start(include_disabled: bool = Body(True, embed=True)) -> dict:
+    """Start a background review job (see /companies/jobs/* for stream + result).
+
+    include_disabled=false reviews only enabled boards — the UI passes this so it
+    only reviews what's currently visible (disabled boards are hidden by default).
+    """
     from job_hunt.suggester import review_companies
 
     cfg = _read_json(paths.config_path(), {})
     resume = _resume_or_400(cfg)
     companies = _read_json(paths.companies_path(), [])
+    if not include_disabled:
+        companies = [c for c in companies if c.get("enabled", True)]
 
     def job():
         flagged = review_companies(cfg, resume, companies, on_token=jobs.emit_token) if companies else []
