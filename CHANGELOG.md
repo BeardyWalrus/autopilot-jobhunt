@@ -9,6 +9,15 @@ reconstructed from git history.
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-07-14
+
+### Added
+- **Editable job-search terms** in Settings → Candidate: "Search keywords" and
+  "Search seniority" fields that build the per-company query
+  (`site:domain (seniority) (keywords)`). Previously these were hardcoded to
+  ML/data-science defaults and only changeable by editing config.json — now you
+  can tune what's actually searched for your own field from the browser.
+
 ## [0.8.0] — 2026-07-14
 
 ### Added
