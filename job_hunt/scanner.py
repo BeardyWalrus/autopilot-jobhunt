@@ -72,6 +72,27 @@ DEFAULT_SEARCH_KEYWORDS = (
 )
 
 
+DEFAULT_SCORE_BATCH_SIZE = 5
+
+
+def _score_batch_size(config: dict) -> int:
+    """How many jobs to score per LLM call. Smaller batches mean a shorter prompt
+    and fewer output tokens per call, which weak/local models complete and format
+    far more reliably (a large batch is the usual cause of unparseable output).
+
+    Read from config `score_batch_size` (or candidate.score_batch_size), clamped
+    to 1–20; defaults to 5.
+    """
+    raw = config.get("score_batch_size")
+    if raw is None:
+        raw = config.get("candidate", {}).get("score_batch_size")
+    try:
+        n = int(raw)
+    except (TypeError, ValueError):
+        return DEFAULT_SCORE_BATCH_SIZE
+    return max(1, min(20, n))
+
+
 def build_search_query(domain: str, candidate: dict) -> str:
     seniority = candidate.get("search_seniority") or DEFAULT_SEARCH_SENIORITY
     keywords = candidate.get("search_keywords") or DEFAULT_SEARCH_KEYWORDS
@@ -583,6 +604,7 @@ def run_scan(config: dict, companies: list[dict]) -> None:
 
     min_score = config.get("candidate", {}).get("min_score", 55)
     top_n = config.get("candidate", {}).get("top_n", 5)
+    batch_size = _score_batch_size(config)
 
     state = load_state()
     seen_urls: set = set(state.get("seen_urls", []))
@@ -610,19 +632,21 @@ def run_scan(config: dict, companies: list[dict]) -> None:
                 companies_scanned += 1
                 continue
 
-            num_batches = (len(new_jobs) + 9) // 10
+            num_batches = (len(new_jobs) + batch_size - 1) // batch_size
             logger.info(
                 f"  {len(new_jobs)} new job URL(s) — fetching + scoring in "
-                f"{num_batches} batch(es) of 10..."
+                f"{num_batches} batch(es) of {batch_size}..."
             )
-            # Process each batch of 10 end-to-end — fetch, score, then checkpoint —
-            # and only mark its URLs "seen" once its results are on disk. An
-            # interrupted scan therefore re-does at most the current batch of 10,
-            # not the whole company, and never marks a job seen without saving it.
+            # Process each batch end-to-end — fetch, score, then checkpoint — and
+            # only mark its URLs "seen" once its results are on disk. An interrupted
+            # scan therefore re-does at most the current batch, not the whole
+            # company, and never marks a job seen without saving it. Smaller batches
+            # also give the LLM a shorter prompt to score, which weak/local models
+            # parse far more reliably (see _score_batch_size).
             company_scored: list[dict] = []
-            for i in range(0, len(new_jobs), 10):
-                batch = new_jobs[i: i + 10]
-                batch_num = i // 10 + 1
+            for i in range(0, len(new_jobs), batch_size):
+                batch = new_jobs[i: i + batch_size]
+                batch_num = i // batch_size + 1
                 lbl = f"  [{company['name']}] Batch {batch_num}/{num_batches}"
 
                 logger.info(f"{lbl}: fetching {len(batch)} job(s)...")

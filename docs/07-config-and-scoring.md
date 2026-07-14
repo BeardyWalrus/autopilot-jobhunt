@@ -68,6 +68,9 @@ prompt):
   it are discarded from results.
 - **`top_n`** — how many of the passing matches are pushed to Telegram (all passing jobs
   still land in the CSV and `last_scan.json`).
+- **`score_batch_size`** — how many jobs are scored per LLM call (top-level config key,
+  1–20, default 5). Lower it if the model returns unparseable output — a shorter prompt
+  is easier for small/local models to complete and format; the trade-off is more LLM calls.
 
 Tune `min_score` up if you get too many marginal matches, down if you get too few.
 

@@ -37,8 +37,11 @@ faster.
 2. **Deduplicate** — URLs already seen (tracked in `state/seen_jobs.json`) are skipped,
    so each scan surfaces only *new* postings.
 3. **Fetch details** — pull each job page's content (first ~3000 chars).
-4. **Score** — batch of 10 jobs → LLM → JSON with score (0–100), extracted title,
-   stack, location/remote, one-line reason, and `worth_applying`.
+4. **Score** — a small batch of jobs (default 5, set `score_batch_size` to change)
+   → LLM → a `KEY: value` block per job with score (0–100), extracted title,
+   stack, location/remote, one-line reason, and `worth_applying`. The parser is
+   tolerant (it also accepts JSON), so weak/local models still produce usable
+   scores; smaller batches keep the prompt short and parse more reliably.
 5. **Persist** — passing jobs saved to `state/last_scan.json`, appended to
    `state/job_history.json`, and always written to `output/jobs_<date>.csv`.
 6. **Notify** — top `top_n` matches ≥ `min_score` sent to Telegram (if configured).

@@ -85,6 +85,15 @@ def test_score_jobs_empty():
     assert scanner.score_jobs([], "resume", {}) == []
 
 
+def test_score_batch_size_default_and_clamp():
+    assert scanner._score_batch_size({}) == 5                       # default
+    assert scanner._score_batch_size({"score_batch_size": 3}) == 3  # top-level
+    assert scanner._score_batch_size({"candidate": {"score_batch_size": 8}}) == 8
+    assert scanner._score_batch_size({"score_batch_size": 0}) == 1  # clamped low
+    assert scanner._score_batch_size({"score_batch_size": 99}) == 20  # clamped high
+    assert scanner._score_batch_size({"score_batch_size": "oops"}) == 5  # non-int -> default
+
+
 def test_score_jobs_parses_and_filters(monkeypatch):
     jobs = [{"company": "Acme", "location": "Remote", "title": "MLE", "url": "u1"},
             {"company": "Beta", "location": "NY", "title": "SWE", "url": "u2"}]
@@ -288,17 +297,17 @@ def test_run_scan_persists_before_company_failure(scan_setup, monkeypatch):
 
 
 def test_run_scan_checkpoints_each_batch(scan_setup, monkeypatch):
-    # 15 jobs -> 2 batches (10 + 5). The 2nd batch's fetch dies. The 1st batch's
-    # 10 URLs must already be marked seen (per-batch checkpoint), so a re-run
-    # would not re-download them — recovery granularity is 10, not the company.
+    # 15 jobs at the default batch size of 5 -> 3 batches. The last batch's fetch
+    # dies; the first two batches' URLs must already be marked seen (per-batch
+    # checkpoint), so a re-run would not re-download them.
     cfg, companies = scan_setup
     jobs = [{"url": f"https://x.co/jobs/{n}", "title": "MLE", "company": "Acme",
              "location": "Remote", "region": "EU"} for n in range(15)]
     monkeypatch.setattr(scanner, "discover_job_urls", lambda tf, co, seen, cand=None: jobs)
 
     def batch_fetch(tf, batch):
-        if any(j["url"].endswith("/14") for j in batch):  # a job only in batch 2
-            raise RuntimeError("fetch died on batch 2")
+        if any(j["url"].endswith("/14") for j in batch):  # a job only in the last batch
+            raise RuntimeError("fetch died on the last batch")
         return len(batch)
 
     monkeypatch.setattr(scanner, "_fetch_details_batch", batch_fetch)
@@ -306,8 +315,22 @@ def test_run_scan_checkpoints_each_batch(scan_setup, monkeypatch):
     scanner.run_scan(cfg, companies)
 
     seen = set(json.loads(scanner.STATE_FILE.read_text())["seen_urls"])
-    assert "https://x.co/jobs/0" in seen and "https://x.co/jobs/9" in seen  # batch 1 checkpointed
-    assert "https://x.co/jobs/14" not in seen  # failed batch 2 not marked seen -> will retry
+    assert "https://x.co/jobs/0" in seen and "https://x.co/jobs/9" in seen  # earlier batches checkpointed
+    assert "https://x.co/jobs/14" not in seen  # failed last batch not marked seen -> will retry
+
+
+def test_run_scan_honours_configured_batch_size(scan_setup, monkeypatch):
+    cfg, companies = scan_setup
+    cfg["score_batch_size"] = 3
+    jobs = [{"url": f"https://x.co/jobs/{n}", "title": "MLE", "company": "Acme",
+             "location": "Remote", "region": "EU"} for n in range(7)]
+    monkeypatch.setattr(scanner, "discover_job_urls", lambda tf, co, seen, cand=None: jobs)
+    monkeypatch.setattr(scanner, "_fetch_details_batch", lambda tf, batch: len(batch))
+    sizes = []
+    monkeypatch.setattr(scanner, "score_jobs", lambda batch, resume, c: sizes.append(len(batch)) or [])
+    monkeypatch.setattr(scanner, "send_telegram", lambda *a: True)
+    scanner.run_scan(cfg, companies)
+    assert sizes == [3, 3, 1]  # 7 jobs at batch size 3
 
 
 # --- export --------------------------------------------------------------------

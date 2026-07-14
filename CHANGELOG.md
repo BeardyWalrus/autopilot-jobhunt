@@ -9,6 +9,19 @@ reconstructed from git history.
 
 ## [Unreleased]
 
+## [0.11.0] — 2026-07-14
+
+### Changed
+- **Jobs are now scored in batches of 5 (was 10).** A large batch was the main
+  cause of unparseable scoring output — small/local models truncate or drift when
+  asked to score 10 jobs at once. Smaller batches keep the prompt short and parse
+  far more reliably. Configurable via the top-level `score_batch_size` (1–20) and
+  a new field in Settings → Diagnostics.
+
+### Docs
+- Corrected docs that described the scorer as returning "JSON" — it asks for a
+  simpler `KEY: value` block per job (the parser still accepts JSON as a fallback).
+
 ## [0.10.0] — 2026-07-14
 
 ### Added

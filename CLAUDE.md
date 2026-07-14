@@ -89,7 +89,7 @@ scored jobs. Scans can also run on a daily schedule (Settings → Schedule).
   2. `nvidia/nemotron-3-super-120b-a12b:free` — fallback 1
   3. `google/gemma-4-31b-it:free` — fallback 2
   4. `qwen/qwen3-coder:free` — fallback 3
-- **Calls per scan:** ~5–15 LLM calls (jobs scored in batches of 10) — one nightly scan stays within all four models' free limits
+- **Calls per scan:** ~10–30 LLM calls (jobs scored in small batches — default 5, set `score_batch_size`) — one nightly scan stays within all four models' free limits
 - **"All LLM models failed":** all 4 models hit their daily quota — wait for midnight UTC reset, or add a small OpenRouter credit ($1–5) to remove the cap
 - **Multiple scans/day:** risks exhausting free-tier quota — run once nightly via cron
 - Check live per-model limits: [openrouter.ai/models](https://openrouter.ai/models)
