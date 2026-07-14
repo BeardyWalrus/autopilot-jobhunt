@@ -19,6 +19,11 @@ reconstructed from git history.
 - **Mobile nav tabs.** On phones the four tabs (Scan, Job Boards, Resume, Settings)
   were a cramped horizontal-scroll strip; they now lay out as a 2×2 grid of large,
   tappable buttons on their own row below the brand. Desktop is unchanged.
+- **Apply / careers links open reliably in a new tab.** Job/careers URLs stored
+  without an `https://` scheme were resolving relative to the app's own origin
+  (so the link appeared to open "in the current tab" — really the app again);
+  they're now normalised to absolute URLs. The Apply link is also a clearer
+  button (`Apply ↗`) with `target="_blank"` + `rel="noopener noreferrer"`.
 
 ## [0.12.1] — 2026-07-14
 
