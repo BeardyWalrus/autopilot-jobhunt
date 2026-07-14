@@ -9,6 +9,8 @@ reconstructed from git history.
 
 ## [Unreleased]
 
+## [0.13.0] — 2026-07-14
+
 ### Added
 - **Results persist across scans, with a status.** The Scan tab's results no longer
   get wiped by the next run — they accumulate in a new cumulative store
