@@ -2,6 +2,12 @@ import { useEffect, useState } from 'react'
 import { api } from '../api.js'
 
 const PROVIDERS = ['openrouter', 'ollama', 'anthropic', 'claude_cli']
+const LABELS = {
+  openrouter: { name: 'OpenRouter', note: 'hosted free tier + paid models' },
+  ollama: { name: 'Ollama', note: 'local — no key, no rate limits' },
+  anthropic: { name: 'Anthropic', note: 'Claude API (requires key)' },
+  claude_cli: { name: 'Claude Code CLI', note: 'uses your local claude auth' },
+}
 
 export default function Settings() {
   const [cfg, setCfg] = useState(null)
@@ -84,55 +90,78 @@ export default function Settings() {
       </div>
 
       <div className="card">
-        <h2>LLM provider</h2>
-        <div className="grid">
-          <Field label="Provider">
-            <select value={provider} onChange={(e) => set('llm_provider', e.target.value)}>
-              {PROVIDERS.map((p) => <option key={p} value={p}>{p}</option>)}
-            </select>
-          </Field>
-          {provider === 'openrouter' && (
-            <Field label="OpenRouter model"><input value={cfg.openrouter_model || ''} onChange={(e) => set('openrouter_model', e.target.value)} /></Field>
-          )}
-          {provider === 'ollama' && (
-            <>
-              <Field label="Ollama model" hint="installed models — Test to refresh">
-                <select value={cfg.ollama_model || ''} onChange={(e) => set('ollama_model', e.target.value)}>
-                  {!cfg.ollama_model && (
-                    <option value="">{ollamaModels.length ? '— select a model —' : '— Test to list models —'}</option>
-                  )}
-                  {ollamaOptions.map((m) => <option key={m} value={m}>{m}</option>)}
-                </select>
-              </Field>
-              <Field label="Ollama base URL">
-                <div className="row">
-                  <input value={cfg.ollama_base_url || ''} onChange={(e) => set('ollama_base_url', e.target.value)} placeholder="http://localhost:11434/v1" />
-                  <button type="button" className="nowrap" onClick={() => testOllama(cfg.ollama_base_url)} disabled={testingOllama}>
-                    {testingOllama ? 'Testing…' : 'Test'}
-                  </button>
-                </div>
-                {ollamaStatus?.ok && <span className="ok small">✓ {ollamaStatus.ok}</span>}
-                {ollamaStatus?.err && <span className="err small">✗ {ollamaStatus.err}</span>}
-              </Field>
-            </>
-          )}
-          {provider === 'anthropic' && (
-            <Field label="Anthropic model"><input value={cfg.anthropic_model || ''} onChange={(e) => set('anthropic_model', e.target.value)} /></Field>
-          )}
-          {provider === 'claude_cli' && (
-            <Field label="Claude CLI model" hint="sonnet / opus / haiku (blank = default)"><input value={cfg.claude_cli_model || ''} onChange={(e) => set('claude_cli_model', e.target.value)} /></Field>
-          )}
+        <h2>LLM providers</h2>
+        <p className="muted small">Set up any providers you use, then pick the one to use for scoring, drafting, and suggestions.</p>
+        <div className="providers">
+          {PROVIDERS.map((p) => (
+            <div key={p} className={provider === p ? 'provider active' : 'provider'}>
+              <label className="provider-head">
+                <input
+                  type="radio"
+                  name="llm_provider"
+                  checked={provider === p}
+                  onChange={() => {
+                    set('llm_provider', p)
+                    if (p === 'ollama' && !ollamaModels.length) testOllama(cfg.ollama_base_url, true)
+                  }}
+                />
+                <span className="provider-name">{LABELS[p].name}</span>
+                <span className="muted small">{LABELS[p].note}</span>
+                {provider === p && <span className="badge live">active</span>}
+              </label>
+
+              <div className="provider-body grid">
+                {p === 'openrouter' && (
+                  <>
+                    <Field label="Model"><input value={cfg.openrouter_model || ''} onChange={(e) => set('openrouter_model', e.target.value)} placeholder="meta-llama/llama-3.3-70b-instruct:free" /></Field>
+                    <Field label="API key"><input type="password" value={cfg.openrouter_api_key || ''} onChange={(e) => set('openrouter_api_key', e.target.value)} /></Field>
+                    <Field label="Fallback models" hint="comma-separated, tried in order">
+                      <input
+                        value={(cfg.openrouter_fallback_models || []).join(', ')}
+                        onChange={(e) => set('openrouter_fallback_models', e.target.value.split(',').map((s) => s.trim()).filter(Boolean))}
+                      />
+                    </Field>
+                  </>
+                )}
+                {p === 'ollama' && (
+                  <>
+                    <Field label="Model" hint="installed models — Test to refresh">
+                      <select value={cfg.ollama_model || ''} onChange={(e) => set('ollama_model', e.target.value)}>
+                        {!cfg.ollama_model && <option value="">{ollamaModels.length ? '— select a model —' : '— Test to list models —'}</option>}
+                        {ollamaOptions.map((m) => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                    </Field>
+                    <Field label="Base URL">
+                      <div className="row">
+                        <input value={cfg.ollama_base_url || ''} onChange={(e) => set('ollama_base_url', e.target.value)} placeholder="http://localhost:11434/v1" />
+                        <button type="button" className="nowrap" onClick={() => testOllama(cfg.ollama_base_url)} disabled={testingOllama}>
+                          {testingOllama ? 'Testing…' : 'Test'}
+                        </button>
+                      </div>
+                      {ollamaStatus?.ok && <span className="ok small">✓ {ollamaStatus.ok}</span>}
+                      {ollamaStatus?.err && <span className="err small">✗ {ollamaStatus.err}</span>}
+                    </Field>
+                  </>
+                )}
+                {p === 'anthropic' && (
+                  <>
+                    <Field label="Model"><input value={cfg.anthropic_model || ''} onChange={(e) => set('anthropic_model', e.target.value)} placeholder="claude-haiku-4-5-20251001" /></Field>
+                    <Field label="API key"><input type="password" value={cfg.anthropic_api_key || ''} onChange={(e) => set('anthropic_api_key', e.target.value)} /></Field>
+                  </>
+                )}
+                {p === 'claude_cli' && (
+                  <Field label="Model" hint="sonnet / opus / haiku (blank = default)"><input value={cfg.claude_cli_model || ''} onChange={(e) => set('claude_cli_model', e.target.value)} /></Field>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
       <div className="card">
         <h2>API keys</h2>
-        <p className="muted small">Stored locally in config.json. Leave blank to use a .env file instead.</p>
-        <div className="grid">
-          <Field label="TinyFish"><input type="password" value={cfg.tinyfish_api_key || ''} onChange={(e) => set('tinyfish_api_key', e.target.value)} /></Field>
-          {provider === 'openrouter' && <Field label="OpenRouter"><input type="password" value={cfg.openrouter_api_key || ''} onChange={(e) => set('openrouter_api_key', e.target.value)} /></Field>}
-          {provider === 'anthropic' && <Field label="Anthropic"><input type="password" value={cfg.anthropic_api_key || ''} onChange={(e) => set('anthropic_api_key', e.target.value)} /></Field>}
-        </div>
+        <p className="muted small">Stored locally in config.json. Leave blank to use a .env file instead. (Provider keys live with each provider above.)</p>
+        <Field label="TinyFish — job discovery"><input type="password" value={cfg.tinyfish_api_key || ''} onChange={(e) => set('tinyfish_api_key', e.target.value)} /></Field>
       </div>
 
       <div className="card">

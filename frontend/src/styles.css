@@ -135,6 +135,15 @@ tr.disabled td { text-decoration: line-through; }
 tr.disabled td:first-child { text-decoration: none; }
 .switch input { width: auto; cursor: pointer; }
 
+.providers { display: flex; flex-direction: column; gap: 10px; }
+.provider { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; background: var(--panel-2); }
+.provider.active { border-color: var(--accent); background: rgba(79, 140, 255, 0.06); }
+.provider-head { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.provider-head input { width: auto; }
+.provider-name { font-weight: 600; }
+.provider-body { margin-top: 12px; }
+.provider-body.grid { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+
 .about .kv { display: flex; justify-content: space-between; gap: 16px; padding: 6px 0; border-bottom: 1px solid var(--border); }
 .about .kv:last-child { border-bottom: 0; }
 .mono { font-family: 'SF Mono', Menlo, Consolas, monospace; }
