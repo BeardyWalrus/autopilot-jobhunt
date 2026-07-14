@@ -13,6 +13,26 @@ from job_hunt.notifier import send_telegram
 
 logger = get_logger()
 
+
+def _telegram_configured(tg: dict) -> bool:
+    """True only when Telegram has a real token AND chat_id.
+
+    The shipped config template seeds telegram.token / chat_id with placeholder
+    values (e.g. "YOUR_TELEGRAM_BOT_TOKEN"), which are truthy. Treat those — and
+    the `your_..._here` env-style placeholders — as unconfigured so the scan
+    doesn't try to send to Telegram when it was never actually set up.
+    """
+    def real(val) -> bool:
+        if not isinstance(val, str):
+            return bool(val)
+        v = val.strip()
+        if not v:
+            return False
+        return not (v.startswith("YOUR_") or v.endswith("_HERE") or v.endswith("_here"))
+
+    return real(tg.get("token")) and real(tg.get("chat_id"))
+
+
 STATE_FILE = Path("state/seen_jobs.json")
 LAST_SCAN_FILE = Path("state/last_scan.json")
 JOB_HISTORY_FILE = Path("state/job_history.json")
@@ -647,7 +667,7 @@ def run_scan(config: dict, companies: list[dict]) -> None:
 
     date_str = datetime.now().strftime("%d %b %Y")
     tg = config.get("telegram", {})
-    telegram_configured = bool(tg.get("token") and tg.get("chat_id"))
+    telegram_configured = _telegram_configured(tg)
 
     # Always persist results to CSV when there are scored jobs — this is the
     # durable record regardless of whether Telegram is configured.
