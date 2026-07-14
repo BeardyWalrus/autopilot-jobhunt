@@ -121,7 +121,8 @@ def suggest_companies(
         count=count,
         avoid_clause=avoid_clause,
     )
-    logger.info(f"Suggesting {count} companies from resume via LLM...")
+    provider = config.get("llm_provider") or "openrouter"
+    logger.info(f"Suggesting {count} companies from your resume via {provider}...")
     raw = chat_with_llm(config, messages=[{"role": "user", "content": prompt}], temperature=0.4)
     suggestions = _parse_suggestions(raw)
 
@@ -198,6 +199,8 @@ def review_companies(
     Reviews in batches so large lists stay within a small model's context.
     """
     profile = _build_candidate_profile(config)
+    provider = config.get("llm_provider") or "openrouter"
+    logger.info(f"Reviewing {len(companies)} companies against your resume via {provider}...")
     flagged: list[dict] = []
     for start in range(0, len(companies), batch_size):
         batch = companies[start:start + batch_size]

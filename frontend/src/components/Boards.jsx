@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api.js'
 
 const BLANK = { name: '', careers_url: '', search_domain: '', location: '', region: '' }
@@ -11,10 +11,18 @@ export default function Boards() {
   const [msg, setMsg] = useState(null)
   const [dirty, setDirty] = useState(false)
   const [suggestions, setSuggestions] = useState(null)
-  const [suggesting, setSuggesting] = useState(false)
   const [flagged, setFlagged] = useState(null)
-  const [reviewing, setReviewing] = useState(false)
   const [showDisabled, setShowDisabled] = useState(false)
+  const [jobLog, setJobLog] = useState(null)
+  const [jobRunning, setJobRunning] = useState(false)
+  const esRef = useRef(null)
+  const logRef = useRef(null)
+
+  useEffect(() => {
+    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight
+  }, [jobLog])
+
+  useEffect(() => () => esRef.current?.close(), [])
 
   useEffect(() => {
     api.getCompanies().then((r) => setCompanies(r.companies)).catch((e) => setMsg({ err: e.message }))
@@ -72,17 +80,49 @@ export default function Boards() {
     }
   }
 
-  async function suggest() {
-    setSuggesting(true)
+  async function runJob(kind) {
     setMsg(null)
+    setSuggestions(null)
+    setFlagged(null)
+    setJobLog([])
+    setJobRunning(true)
     try {
-      const r = await api.suggestCompanies(8)
-      setSuggestions(r.suggestions)
-      if (!r.suggestions.length) setMsg({ err: 'No suggestions came back — try again.' })
+      if (kind === 'suggest') await api.suggestStart(8)
+      else await api.reviewStart()
     } catch (e) {
+      setJobRunning(false)
+      setJobLog(null)
       setMsg({ err: e.message })
-    } finally {
-      setSuggesting(false)
+      return
+    }
+    esRef.current?.close()
+    const es = new EventSource('/api/companies/jobs/stream')
+    esRef.current = es
+    es.onmessage = (ev) => setJobLog((prev) => [...(prev || []), ev.data])
+    es.addEventListener('end', async () => {
+      es.close()
+      setJobRunning(false)
+      try {
+        const r = await api.jobsResult()
+        if (r.ok === false) {
+          setMsg({ err: r.error || 'The job failed — see the log above.' })
+          return
+        }
+        const res = r.result || {}
+        if (res.kind === 'suggest') {
+          setSuggestions(res.suggestions || [])
+          if (!res.suggestions?.length) setMsg({ err: 'No suggestions came back — try again.' })
+        } else if (res.kind === 'review') {
+          setFlagged(res.flagged || [])
+          if (!res.flagged?.length) setMsg({ ok: `Reviewed ${res.reviewed} companies — none look like a poor fit.` })
+        }
+      } catch (e) {
+        setMsg({ err: e.message })
+      }
+    })
+    es.onerror = () => {
+      es.close()
+      setJobRunning(false)
     }
   }
 
@@ -93,20 +133,6 @@ export default function Boards() {
     }])
     setDirty(true)
     setSuggestions(suggestions.filter((x) => x !== s))
-  }
-
-  async function review() {
-    setReviewing(true)
-    setMsg(null)
-    try {
-      const r = await api.reviewCompanies()
-      setFlagged(r.flagged)
-      if (!r.flagged.length) setMsg({ ok: `Reviewed ${r.reviewed} companies — none look like a poor fit.` })
-    } catch (e) {
-      setMsg({ err: e.message })
-    } finally {
-      setReviewing(false)
-    }
   }
 
   function findIdx(f) {
@@ -149,13 +175,25 @@ export default function Boards() {
         </div>
 
         <div className="board-actions">
-          <button className="suggest-btn" onClick={suggest} disabled={suggesting}>
-            {suggesting ? 'Analysing your résumé…' : '✨  Suggest companies from my résumé'}
+          <button className="suggest-btn" onClick={() => runJob('suggest')} disabled={jobRunning}>
+            {jobRunning ? 'Working…' : '✨  Suggest companies from my résumé'}
           </button>
-          <button className="review-btn" onClick={review} disabled={reviewing}>
-            {reviewing ? 'Reviewing your list…' : '🧹  Review my list for poor fits'}
+          <button className="review-btn" onClick={() => runJob('review')} disabled={jobRunning}>
+            {jobRunning ? 'Working…' : '🧹  Review my list for poor fits'}
           </button>
         </div>
+
+        {jobLog && (
+          <div className="joblog-wrap">
+            <div className="row between">
+              <span className="muted small">{jobRunning ? 'Running…' : 'Log'}</span>
+              {!jobRunning && <button className="link" onClick={() => setJobLog(null)}>hide log</button>}
+            </div>
+            <pre className="log joblog" ref={logRef}>
+              {jobLog.length ? jobLog.join('\n') : 'Starting…'}
+            </pre>
+          </div>
+        )}
 
         {flagged && flagged.length > 0 && (
           <div className="suggestions flagged">
