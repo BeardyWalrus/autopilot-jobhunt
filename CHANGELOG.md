@@ -9,6 +9,21 @@ reconstructed from git history.
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-07-14
+
+### Added
+- Configure **multiple LLM providers** in Settings at once (OpenRouter, Ollama,
+  Anthropic, Claude CLI), each with its own model/key fields, and pick the
+  active one with a radio ("use this one").
+- Ollama Settings gained a **model dropdown** (populated from the server) and a
+  **Test** connection button.
+- **Sortable Job Boards columns** — click a header to sort asc/desc/off.
+- Disabled job boards are hidden by default with a "Show off" toggle.
+
+### Changed
+- **Suggest / Review stream the model's output live** — tokens appear in the job
+  log as they're generated (Ollama / OpenRouter), so slow local runs are visible.
+
 ## [0.5.0] — 2026-07-14
 
 ### Added
