@@ -206,14 +206,39 @@ def discover_job_urls(
     return new
 
 
+def _fetch_details_batch(tf: TinyFish, batch: list[dict]) -> int:
+    """Fetch + enrich one batch (<=10 jobs) in place.
+
+    Returns the number of jobs whose content was fetched, or -1 if the fetch
+    call itself failed (jobs are left unenriched but still usable). Kept separate
+    from fetch_job_details so run_scan can drive batching itself and checkpoint
+    after each batch.
+    """
+    urls = [j["url"] for j in batch]
+    logger.debug(f"    Batch URLs: {[j['title'][:40] for j in batch]}")
+    resp = _fetch_with_ratelimit(tf, urls, format="markdown")
+    if not resp:
+        return -1
+    fetched = {r.url: r for r in resp.results}
+    got = 0
+    for job in batch:
+        r = fetched.get(job["url"])
+        if r and r.text:
+            job["content"] = r.text[:3000]
+            job["title"] = r.title or job["title"]
+            got += 1
+            logger.debug(f"      Fetched '{job['title']}' — {len(r.text)} chars")
+        else:
+            logger.debug(f"      No content for: {job['url']}")
+    return got
+
+
 def fetch_job_details(tf: TinyFish, jobs: list[dict], label: str = "") -> list[dict]:
-    enriched = []
     total = len(jobs)
     total_batches = (total + 9) // 10
     prefix = f"  [{label}] " if label else "  "
     for i in range(0, total, 10):
         batch = jobs[i: i + 10]
-        urls = [j["url"] for j in batch]
         batch_num = i // 10 + 1
         # INFO (not DEBUG) so the long, rate-limit-paced fetch loop reports live
         # progress instead of going silent for minutes after "fetching details...".
@@ -221,26 +246,12 @@ def fetch_job_details(tf: TinyFish, jobs: list[dict], label: str = "") -> list[d
             f"{prefix}Fetching details: batch {batch_num}/{total_batches} "
             f"({min(i + len(batch), total)}/{total} jobs)..."
         )
-        logger.debug(f"{prefix}Batch {batch_num} URLs: {[j['title'][:40] for j in batch]}")
-        resp = _fetch_with_ratelimit(tf, urls, format="markdown")
-        if not resp:
+        got = _fetch_details_batch(tf, batch)
+        if got < 0:
             logger.warning(f"{prefix}Batch {batch_num}/{total_batches} returned no content — keeping URLs unenriched")
-            enriched.extend(batch)
-            continue
-        fetched = {r.url: r for r in resp.results}
-        got = 0
-        for job in batch:
-            r = fetched.get(job["url"])
-            if r and r.text:
-                job["content"] = r.text[:3000]
-                job["title"] = r.title or job["title"]
-                got += 1
-                logger.debug(f"{prefix}  Fetched '{job['title']}' — {len(r.text)} chars")
-            else:
-                logger.debug(f"{prefix}  No content for: {job['url']}")
-            enriched.append(job)
-        logger.info(f"{prefix}Batch {batch_num}/{total_batches} done — {got}/{len(batch)} enriched")
-    return enriched
+        else:
+            logger.info(f"{prefix}Batch {batch_num}/{total_batches} done — {got}/{len(batch)} enriched")
+    return jobs
 
 
 def score_jobs(jobs: list[dict], resume: str, config: dict) -> list[dict]:
@@ -434,34 +445,49 @@ def run_scan(config: dict, companies: list[dict]) -> None:
                 companies_scanned += 1
                 continue
 
-            logger.info(f"  {len(new_jobs)} new job URL(s) — fetching details...")
-            new_jobs = fetch_job_details(tf, new_jobs, label=company["name"])
-            seen_urls.update(j["url"] for j in new_jobs)
-
             num_batches = (len(new_jobs) + 9) // 10
-            logger.info(f"  Scoring {len(new_jobs)} job(s) in {num_batches} batch(es)...")
-            scored: list[dict] = []
-            try:
-                for i in range(0, len(new_jobs), 10):
-                    batch = new_jobs[i: i + 10]
-                    logger.info(f"  Scoring batch {i // 10 + 1}/{num_batches} ({len(batch)} jobs)...")
-                    batch_scored = score_jobs(batch, resume, config)
-                    scored.extend(batch_scored)
-                    if batch_scored:
-                        logger.info(f"  Batch {i // 10 + 1}/{num_batches}: {len(batch_scored)} passed threshold")
-            except Exception as score_err:
-                logger.error(f"  Scoring failed: {score_err}")
-                errors.append(f"⚠️ Scoring failed for {company['name']}: {score_err}")
-                logger.warning(f"  Saving {len(new_jobs)} unscored job(s) as fallback")
-                scored = new_jobs
+            logger.info(
+                f"  {len(new_jobs)} new job URL(s) — fetching + scoring in "
+                f"{num_batches} batch(es) of 10..."
+            )
+            # Process each batch of 10 end-to-end — fetch, score, then checkpoint —
+            # and only mark its URLs "seen" once its results are on disk. An
+            # interrupted scan therefore re-does at most the current batch of 10,
+            # not the whole company, and never marks a job seen without saving it.
+            company_scored: list[dict] = []
+            for i in range(0, len(new_jobs), 10):
+                batch = new_jobs[i: i + 10]
+                batch_num = i // 10 + 1
+                lbl = f"  [{company['name']}] Batch {batch_num}/{num_batches}"
 
-            if scored:
-                for job in scored:
-                    job["scan_date"] = scan_date
-                all_scored_jobs.extend(scored)
+                logger.info(f"{lbl}: fetching {len(batch)} job(s)...")
+                got = _fetch_details_batch(tf, batch)
+                if got < 0:
+                    logger.warning(f"{lbl}: fetch returned no content — scoring URLs unenriched")
+
+                logger.info(f"{lbl}: scoring {len(batch)} job(s)...")
+                try:
+                    batch_scored = score_jobs(batch, resume, config)
+                except Exception as score_err:
+                    logger.error(f"{lbl}: scoring failed ({score_err}) — saving unscored")
+                    errors.append(f"⚠️ Scoring failed for {company['name']} batch {batch_num}: {score_err}")
+                    batch_scored = batch
+
+                if batch_scored:
+                    for job in batch_scored:
+                        job["scan_date"] = scan_date
+                    all_scored_jobs.extend(batch_scored)
+                    company_scored.extend(batch_scored)
+                    logger.info(f"{lbl}: {len(batch_scored)} saved")
+
+                # Mark seen + flush to disk only after this batch is fully handled.
+                seen_urls.update(j["url"] for j in batch)
+                _checkpoint()
+
+            if company_scored:
                 companies_with_jobs += 1
-                titles = [j.get("extracted_title") or j.get("title", "?") for j in scored[:3]]
-                logger.info(f"  {len(scored)} job(s) saved: {', '.join(titles)}{' ...' if len(scored) > 3 else ''}")
+                titles = [j.get("extracted_title") or j.get("title", "?") for j in company_scored[:3]]
+                logger.info(f"  {len(company_scored)} job(s) saved for {company['name']}: {', '.join(titles)}{' ...' if len(company_scored) > 3 else ''}")
 
             companies_scanned += 1
 
@@ -474,11 +500,10 @@ def run_scan(config: dict, companies: list[dict]) -> None:
             _checkpoint()
             continue
 
-        # Checkpoint after every company: seen URLs + results are on disk so a
-        # crash, timeout, or Ctrl-C mid-scan leaves a recoverable state.
-        _checkpoint()
+        # Per-batch _checkpoint() above already flushed this company's work; the
+        # loop just needs to move on. A final _checkpoint() runs after the loop.
         logger.debug(
-            f"  Checkpoint saved ({len(all_scored_jobs)} jobs, {len(seen_urls)} seen URLs)"
+            f"  {company['name']} done — {len(all_scored_jobs)} jobs, {len(seen_urls)} seen URLs on disk"
         )
 
     logger.info("All companies scanned — finalising results")
