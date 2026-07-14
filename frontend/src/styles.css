@@ -145,6 +145,9 @@ tr.disabled td:first-child { text-decoration: none; }
 .provider-name { font-weight: 600; }
 .provider-body { margin-top: 12px; }
 .provider-body.grid { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.provider-remove { margin-left: auto; }
+.add-provider { margin-top: 12px; }
+.add-provider select { max-width: 260px; }
 
 .about .kv { display: flex; justify-content: space-between; gap: 16px; padding: 6px 0; border-bottom: 1px solid var(--border); }
 .about .kv:last-child { border-bottom: 0; }

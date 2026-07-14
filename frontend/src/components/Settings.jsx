@@ -8,6 +8,21 @@ const LABELS = {
   anthropic: { name: 'Anthropic', note: 'Claude API (requires key)' },
   claude_cli: { name: 'Claude Code CLI', note: 'uses your local claude auth' },
 }
+// config.json keys owned by each provider — used to decide which providers are
+// "in use" (any value set) and to clear a provider when it's removed.
+const PROVIDER_KEYS = {
+  openrouter: ['openrouter_model', 'openrouter_api_key', 'openrouter_fallback_models'],
+  ollama: ['ollama_model', 'ollama_base_url', 'ollama_api_key'],
+  anthropic: ['anthropic_model', 'anthropic_api_key'],
+  claude_cli: ['claude_cli_model'],
+}
+
+function isConfigured(cfg, p) {
+  return PROVIDER_KEYS[p].some((k) => {
+    const v = cfg[k]
+    return Array.isArray(v) ? v.length > 0 : !!v
+  })
+}
 
 export default function Settings() {
   const [cfg, setCfg] = useState(null)
@@ -18,10 +33,15 @@ export default function Settings() {
   const [ollamaModels, setOllamaModels] = useState([])
   const [ollamaStatus, setOllamaStatus] = useState(null)
   const [testingOllama, setTestingOllama] = useState(false)
+  const [visible, setVisible] = useState([])  // provider cards currently shown
+  const [addPick, setAddPick] = useState('')
 
   useEffect(() => {
     api.getConfig().then((r) => {
       setCfg(r.config)
+      // Show only providers in use: the active one plus any that have config set.
+      const active = r.config.llm_provider || 'openrouter'
+      setVisible(PROVIDERS.filter((p) => p === active || isConfigured(r.config, p)))
       // Auto-populate the Ollama model list if that's the active provider.
       if (r.config.llm_provider === 'ollama') testOllama(r.config.ollama_base_url, true)
     }).catch((e) => setMsg({ err: e.message }))
@@ -70,6 +90,22 @@ export default function Settings() {
 
   const provider = cfg.llm_provider || 'openrouter'
   const ollamaOptions = Array.from(new Set([...ollamaModels, cfg.ollama_model].filter(Boolean)))
+  const hiddenProviders = PROVIDERS.filter((p) => !visible.includes(p))
+
+  function addProvider(p) {
+    if (!p || visible.includes(p)) return
+    setVisible([...visible, p])
+    setAddPick('')
+    if (p === 'ollama' && !ollamaModels.length) testOllama(cfg.ollama_base_url, true)
+  }
+
+  function removeProvider(p) {
+    if (p === provider) return  // can't remove the active provider
+    const next = { ...cfg }
+    PROVIDER_KEYS[p].forEach((k) => delete next[k])  // clear its config so it stays removed
+    setCfg(next)
+    setVisible(visible.filter((x) => x !== p))
+  }
 
   return (
     <div className="stack">
@@ -93,7 +129,7 @@ export default function Settings() {
         <h2>LLM providers</h2>
         <p className="muted small">Set up any providers you use, then pick the one to use for scoring, drafting, and suggestions.</p>
         <div className="providers">
-          {PROVIDERS.map((p) => (
+          {visible.map((p) => (
             <div key={p} className={provider === p ? 'provider active' : 'provider'}>
               <label className="provider-head">
                 <input
@@ -107,7 +143,9 @@ export default function Settings() {
                 />
                 <span className="provider-name">{LABELS[p].name}</span>
                 <span className="muted small">{LABELS[p].note}</span>
-                {provider === p && <span className="badge live">active</span>}
+                {provider === p
+                  ? <span className="badge live">active</span>
+                  : <button type="button" className="link danger provider-remove" onClick={() => removeProvider(p)}>remove</button>}
               </label>
 
               <div className="provider-body grid">
@@ -156,6 +194,16 @@ export default function Settings() {
             </div>
           ))}
         </div>
+
+        {hiddenProviders.length > 0 && (
+          <div className="row add-provider">
+            <select value={addPick} onChange={(e) => setAddPick(e.target.value)}>
+              <option value="">Add a provider…</option>
+              {hiddenProviders.map((p) => <option key={p} value={p}>{LABELS[p].name}</option>)}
+            </select>
+            <button type="button" className="nowrap" disabled={!addPick} onClick={() => addProvider(addPick)}>Add</button>
+          </div>
+        )}
       </div>
 
       <div className="card">
