@@ -55,6 +55,7 @@ a:hover { text-decoration: underline; }
   border-radius: 12px; padding: 18px;
 }
 .card h2 { margin: 0 0 14px; font-size: 15px; }
+.card .subhead { margin: 20px 0 4px; font-size: 13px; color: var(--text); border-top: 1px solid var(--border); padding-top: 16px; }
 
 .row { display: flex; gap: 10px; align-items: center; }
 .row.between { justify-content: space-between; }

@@ -123,6 +123,22 @@ export default function Settings() {
         <Field label="Profile"><textarea rows={2} value={cand.profile || ''} onChange={(e) => setCand('profile', e.target.value)} /></Field>
         <Field label="Seeking"><input value={cand.seeking || ''} onChange={(e) => setCand('seeking', e.target.value)} /></Field>
         <Field label="Not suitable"><input value={cand.not_suitable || ''} onChange={(e) => setCand('not_suitable', e.target.value)} /></Field>
+
+        <h3 className="subhead">Job search terms</h3>
+        <p className="muted small">
+          These build the query run against each company (<span className="mono">site:domain (seniority) (keywords)</span>).
+          Use <span className="mono">OR</span> and quote phrases. Leave blank to use the ML/data-science defaults.
+        </p>
+        <Field label="Search keywords" hint="role titles / skills to search for">
+          <textarea rows={2} value={cand.search_keywords || ''}
+            onChange={(e) => setCand('search_keywords', e.target.value)}
+            placeholder={'"data scientist" OR "ML engineer" OR "AI engineer" OR MLOps'} />
+        </Field>
+        <Field label="Search seniority" hint="seniority levels to match">
+          <input value={cand.search_seniority || ''}
+            onChange={(e) => setCand('search_seniority', e.target.value)}
+            placeholder="senior OR staff OR principal OR lead" />
+        </Field>
       </div>
 
       <div className="card">
