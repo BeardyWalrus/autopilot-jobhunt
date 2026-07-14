@@ -10,8 +10,18 @@ export default function Scan() {
   const esRef = useRef(null)
 
   useEffect(() => {
-    api.scanStatus().then((s) => { if (s.running) { setRunning(true); openStream() } })
     loadResults()
+    // Reconnect to a scan on mount so switching tabs doesn't lose it. If one is
+    // running we reopen the live stream; if one finished while we were away, we
+    // restore its log (the runner keeps the buffer) instead of showing "idle".
+    api.scanStatus().then((s) => {
+      if (s.running) {
+        setRunning(true)
+        openStream()  // replays the buffered log, then keeps streaming
+      } else if (s.line_count > 0) {
+        api.scanLogs().then((r) => setLines(r.lines || [])).catch(() => {})
+      }
+    }).catch(() => {})
     return () => esRef.current?.close()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
