@@ -118,6 +118,28 @@ def test_chat_with_ollama_success(monkeypatch):
     assert out == "local answer"
 
 
+def test_list_ollama_models_sorted(monkeypatch):
+    class FakeModels:
+        def list(self):
+            return types.SimpleNamespace(data=[
+                types.SimpleNamespace(id="qwen2.5:7b"), types.SimpleNamespace(id="llama3.1:latest")])
+
+    monkeypatch.setattr(llm_utils, "OpenAI", lambda **k: types.SimpleNamespace(models=FakeModels()))
+    assert llm_utils.list_ollama_models(base_url="http://x/v1") == ["llama3.1:latest", "qwen2.5:7b"]
+
+
+def test_list_ollama_models_unreachable(monkeypatch):
+    from openai import APIConnectionError
+
+    class FakeModels:
+        def list(self):
+            raise APIConnectionError.__new__(APIConnectionError)
+
+    monkeypatch.setattr(llm_utils, "OpenAI", lambda **k: types.SimpleNamespace(models=FakeModels()))
+    with pytest.raises(RuntimeError, match="Could not reach Ollama"):
+        llm_utils.list_ollama_models(base_url="http://x/v1")
+
+
 def test_chat_with_ollama_connection_refused(monkeypatch):
     from openai import APIConnectionError
 

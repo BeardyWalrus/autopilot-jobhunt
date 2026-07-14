@@ -35,6 +35,28 @@ def _make_ollama_client(config: dict) -> OpenAI:
     )
 
 
+def list_ollama_models(base_url: str | None = None, config: dict | None = None) -> list[str]:
+    """Return the model names installed on the Ollama server.
+
+    Uses Ollama's OpenAI-compatible /models endpoint. Raises RuntimeError with a
+    friendly message if the server can't be reached.
+    """
+    cfg = config or {}
+    url = base_url or cfg.get("ollama_base_url") or os.getenv("OLLAMA_BASE_URL") or "http://localhost:11434/v1"
+    client = OpenAI(
+        api_key=cfg.get("ollama_api_key") or os.getenv("OLLAMA_API_KEY") or "ollama",
+        base_url=url,
+        timeout=10.0,
+    )
+    try:
+        resp = client.models.list()
+    except APIConnectionError:
+        raise RuntimeError(
+            f"Could not reach Ollama at {url}. Is it running? Start it with 'ollama serve'."
+        )
+    return sorted(m.id for m in resp.data)
+
+
 def _chat_with_ollama(config: dict, messages: list[dict], temperature: float, max_tokens: int) -> str:
     model = config.get("ollama_model", "llama3.1")
     client = _make_ollama_client(config)

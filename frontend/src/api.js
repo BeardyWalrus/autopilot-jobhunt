@@ -21,6 +21,8 @@ export const api = {
 
   getConfig: () => req('/config'),
   putConfig: (config) => req('/config', { method: 'PUT', body: JSON.stringify(config) }),
+  testOllama: (base_url = '') =>
+    req('/ollama/test', { method: 'POST', body: JSON.stringify({ base_url }) }),
 
   getCompanies: () => req('/companies'),
   putCompanies: (companies) => req('/companies', { method: 'PUT', body: JSON.stringify(companies) }),

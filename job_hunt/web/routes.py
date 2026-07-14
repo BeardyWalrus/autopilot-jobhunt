@@ -68,6 +68,21 @@ def put_config(config: dict = Body(...)) -> dict:
     return {"config": config, "exists": True}
 
 
+@router.post("/ollama/test")
+def ollama_test(base_url: str = Body("", embed=True)) -> dict:
+    """Ping the Ollama server and list its installed models. Returns ok/error
+    inline (200) so the settings page can show status without HTTP error handling."""
+    from job_hunt.llm_utils import list_ollama_models
+
+    cfg = _read_json(paths.config_path(), {}) or {}
+    url = base_url or cfg.get("ollama_base_url") or "http://localhost:11434/v1"
+    try:
+        models = list_ollama_models(base_url=url, config=cfg)
+    except Exception as e:
+        return {"ok": False, "error": str(e), "base_url": url, "models": []}
+    return {"ok": True, "models": models, "base_url": url}
+
+
 # --- companies ----------------------------------------------------------------
 
 @router.get("/companies")
