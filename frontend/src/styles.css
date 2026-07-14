@@ -1,0 +1,114 @@
+:root {
+  --bg: #0f1216;
+  --panel: #171b22;
+  --panel-2: #1e242d;
+  --border: #2a323d;
+  --text: #e6e9ee;
+  --muted: #8b95a3;
+  --accent: #4f8cff;
+  --accent-2: #3a6fd8;
+  --ok: #34c77b;
+  --err: #ff6b6b;
+  --high: #34c77b;
+  --mid: #e0b341;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.app { max-width: 1100px; margin: 0 auto; padding: 0 16px 60px; }
+
+.topbar {
+  display: flex; align-items: center; gap: 20px;
+  padding: 16px 0; margin-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; background: var(--bg); z-index: 10;
+}
+.brand { font-weight: 700; font-size: 16px; }
+.brand .logo { color: var(--accent); margin-right: 4px; }
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+.center { text-align: center; }
+
+.tabs { display: flex; gap: 4px; flex: 1; }
+.tab {
+  background: transparent; border: 0; color: var(--muted);
+  padding: 8px 14px; border-radius: 8px; cursor: pointer; font-size: 14px;
+}
+.tab:hover { color: var(--text); background: var(--panel); }
+.tab.active { color: var(--text); background: var(--panel-2); }
+.health { color: var(--ok); font-size: 12px; }
+.health .err { color: var(--err); }
+
+.stack { display: flex; flex-direction: column; gap: 16px; }
+.card {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 12px; padding: 18px;
+}
+.card h2 { margin: 0 0 14px; font-size: 15px; }
+
+.row { display: flex; gap: 10px; align-items: center; }
+.row.between { justify-content: space-between; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.grid.add { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+
+.field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+.field .label { font-size: 12px; color: var(--muted); }
+.field .hint { color: var(--border); font-style: normal; color: #5f6b7a; }
+
+input, select, textarea {
+  background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+  padding: 9px 11px; border-radius: 8px; font-size: 14px; width: 100%; font-family: inherit;
+}
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+textarea { resize: vertical; }
+textarea.mono, .log { font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 12.5px; }
+
+.checkbox { display: flex; align-items: center; gap: 8px; color: var(--text); }
+.checkbox input { width: auto; }
+
+button {
+  background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+  padding: 9px 16px; border-radius: 8px; cursor: pointer; font-size: 14px;
+}
+button:hover { border-color: var(--accent); }
+button:disabled { opacity: 0.5; cursor: default; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary:hover { background: var(--accent-2); }
+button.danger { border-color: var(--err); color: var(--err); }
+button.link { background: none; border: none; padding: 4px; color: var(--accent); }
+button.link.danger { color: var(--err); }
+
+.actions { display: flex; align-items: center; gap: 14px; }
+.ok { color: var(--ok); }
+.err { color: var(--err); }
+
+.tablewrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; font-size: 12px; }
+td.url { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.log {
+  background: #0b0e12; border: 1px solid var(--border); border-radius: 8px;
+  padding: 12px; height: 320px; overflow: auto; white-space: pre-wrap; margin: 0;
+  color: #c6ccd6;
+}
+
+.badge { font-size: 12px; padding: 3px 10px; border-radius: 20px; }
+.badge.live { color: var(--ok); background: rgba(52, 199, 123, 0.12); }
+.badge.idle { color: var(--muted); background: var(--panel-2); }
+
+.score { font-weight: 700; padding: 2px 8px; border-radius: 6px; }
+.score.high { color: var(--high); background: rgba(52, 199, 123, 0.12); }
+.score.mid { color: var(--mid); background: rgba(224, 179, 65, 0.12); }
+.score.low { color: var(--muted); background: var(--panel-2); }
