@@ -195,19 +195,42 @@ def test_run_scan_persists_before_company_failure(scan_setup, monkeypatch):
     companies = companies + [{"name": "Boom", "careers_url": "c", "search_domain": "y.co",
                               "location": "NY", "region": "NA"}]
 
-    def flaky_fetch(tf, jobs, label=""):
-        if label == "Boom":
+    def flaky_batch(tf, batch):
+        if batch and batch[0].get("company") == "Boom":
             raise RuntimeError("network died")
-        return jobs
+        return len(batch)
 
     monkeypatch.setattr(scanner, "discover_job_urls", lambda tf, co, seen, cand=None: [
         {"url": f"https://x.co/{co['name']}", "title": "MLE", "company": co["name"],
          "location": co["location"], "region": co["region"]}])
-    monkeypatch.setattr(scanner, "fetch_job_details", flaky_fetch)
+    monkeypatch.setattr(scanner, "_fetch_details_batch", flaky_batch)
     monkeypatch.setattr(scanner, "send_telegram", lambda *a: True)
     scanner.run_scan(cfg, companies)
     saved = json.loads(scanner.LAST_SCAN_FILE.read_text())
     assert any(j["company"] == "Acme" for j in saved)  # survived the later failure
+
+
+def test_run_scan_checkpoints_each_batch(scan_setup, monkeypatch):
+    # 15 jobs -> 2 batches (10 + 5). The 2nd batch's fetch dies. The 1st batch's
+    # 10 URLs must already be marked seen (per-batch checkpoint), so a re-run
+    # would not re-download them — recovery granularity is 10, not the company.
+    cfg, companies = scan_setup
+    jobs = [{"url": f"https://x.co/jobs/{n}", "title": "MLE", "company": "Acme",
+             "location": "Remote", "region": "EU"} for n in range(15)]
+    monkeypatch.setattr(scanner, "discover_job_urls", lambda tf, co, seen, cand=None: jobs)
+
+    def batch_fetch(tf, batch):
+        if any(j["url"].endswith("/14") for j in batch):  # a job only in batch 2
+            raise RuntimeError("fetch died on batch 2")
+        return len(batch)
+
+    monkeypatch.setattr(scanner, "_fetch_details_batch", batch_fetch)
+    monkeypatch.setattr(scanner, "send_telegram", lambda *a: True)
+    scanner.run_scan(cfg, companies)
+
+    seen = set(json.loads(scanner.STATE_FILE.read_text())["seen_urls"])
+    assert "https://x.co/jobs/0" in seen and "https://x.co/jobs/9" in seen  # batch 1 checkpointed
+    assert "https://x.co/jobs/14" not in seen  # failed batch 2 not marked seen -> will retry
 
 
 # --- export --------------------------------------------------------------------
@@ -231,7 +254,7 @@ def scan_setup(tmp_path, monkeypatch):
     monkeypatch.setattr(scanner, "discover_job_urls", lambda tf, co, seen, cand=None: [
         {"url": "https://x.co/jobs/1", "title": "MLE", "company": co["name"],
          "location": co["location"], "region": co["region"]}])
-    monkeypatch.setattr(scanner, "fetch_job_details", lambda tf, jobs, label="": jobs)
+    monkeypatch.setattr(scanner, "_fetch_details_batch", lambda tf, batch: len(batch))
     monkeypatch.setattr(scanner, "score_jobs", lambda jobs, resume, cfg: [
         {**jobs[0], "score": 90, "extracted_title": "MLE", "reason": "fit", "stack": "Py"}])
     cfg = {"tinyfish_api_key": "k", "candidate": {"name": "Ada", "resume_path": "resume.md",
