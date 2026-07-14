@@ -12,6 +12,7 @@ export default function Boards() {
   const [dirty, setDirty] = useState(false)
   const [suggestions, setSuggestions] = useState(null)
   const [flagged, setFlagged] = useState(null)
+  const [recommended, setRecommended] = useState(null)
   const [showDisabled, setShowDisabled] = useState(false)
   const [sort, setSort] = useState({ key: null, dir: 'asc' })
   const [jobLog, setJobLog] = useState(null)
@@ -119,6 +120,13 @@ export default function Boards() {
     } else if (res.kind === 'review') {
       setFlagged(res.flagged || [])
       if (!res.flagged?.length) setMsg({ ok: `Reviewed ${res.reviewed} companies — none look like a poor fit.` })
+    } else if (res.kind === 'reconsider') {
+      setRecommended(res.recommended || [])
+      if (!res.recommended?.length) {
+        setMsg(res.reviewed
+          ? { ok: `Reconsidered ${res.reviewed} off boards — none worth turning back on.` }
+          : { ok: 'No off boards to reconsider — all your boards are on.' })
+      }
     }
   }
 
@@ -170,10 +178,12 @@ export default function Boards() {
     setMsg(null)
     setSuggestions(null)
     setFlagged(null)
+    setRecommended(null)
     setJobLog('')
     setJobRunning(true)
     try {
       if (kind === 'suggest') await api.suggestStart(8)
+      else if (kind === 'reconsider') await api.reconsiderStart()
       else await api.reviewStart(showDisabled)  // only review boards currently visible
     } catch (e) {
       setJobRunning(false)
@@ -215,6 +225,14 @@ export default function Boards() {
     setFlagged(flagged.filter((x) => x !== f))
   }
 
+  function enableRecommended(r) {
+    const idx = findIdx(r)
+    if (idx < 0) return
+    setCompanies(companies.map((c, i) => (i === idx ? { ...c, enabled: true } : c)))
+    setDirty(true)
+    setRecommended(recommended.filter((x) => x !== r))
+  }
+
   return (
     <div className="stack">
       <div className="card">
@@ -238,6 +256,14 @@ export default function Boards() {
           </button>
           <button className="review-btn" onClick={() => runJob('review')} disabled={jobRunning}>
             {jobRunning ? 'Working…' : '🧹  Review my list for poor fits'}
+          </button>
+          <button
+            className="reconsider-btn"
+            onClick={() => runJob('reconsider')}
+            disabled={jobRunning || companies.length === activeCount}
+            title={companies.length === activeCount ? 'No off boards to reconsider' : 'Re-check disabled boards for good fits'}
+          >
+            {jobRunning ? 'Working…' : '♻️  Reconsider my off boards'}
           </button>
         </div>
 
@@ -269,6 +295,24 @@ export default function Boards() {
                   <button onClick={() => disableFlagged(f)}>Disable</button>
                   <button className="danger" onClick={() => removeFlagged(f)}>Remove</button>
                 </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {recommended && recommended.length > 0 && (
+          <div className="suggestions recommended">
+            <div className="row between">
+              <h3>Worth turning back on <span className="muted small">— disabled boards that look like a good fit</span></h3>
+              <button className="link" onClick={() => setRecommended(null)}>dismiss</button>
+            </div>
+            {recommended.map((r, i) => (
+              <div className="suggestion" key={i}>
+                <div className="sug-main">
+                  <div><strong>{r.name}</strong> <span className="muted small">{r.search_domain}</span></div>
+                  {r.reason && <div className="muted small">{r.reason}</div>}
+                </div>
+                <button onClick={() => enableRecommended(r)}>Enable</button>
               </div>
             ))}
           </div>

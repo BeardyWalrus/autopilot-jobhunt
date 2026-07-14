@@ -229,3 +229,68 @@ def review_companies(
                 })
     logger.info(f"Flagged {len(flagged)} poor-fit companies")
     return flagged
+
+
+RECONSIDER_PROMPT = """You are reviewing companies a candidate previously turned OFF (disabled)
+on their job-scan list. Identify which ones are actually a GOOD FIT for this
+candidate's profile and resume and are worth turning back ON.
+
+CANDIDATE PROFILE:
+{profile}
+
+RESUME:
+{resume}
+
+DISABLED COMPANIES:
+{companies_text}
+
+For EACH company that is a strong fit and worth re-enabling, output one block,
+separated by a line of three dashes (---):
+
+NAME: exact company name from the list above
+REASON: one sentence on why it's a good fit worth turning back on
+
+List ONLY companies worth re-enabling. If a company genuinely doesn't fit, leave
+it out. Output nothing else."""
+
+
+def reconsider_companies(
+    config: dict, resume: str, companies: list[dict], batch_size: int = 50, on_token=None
+) -> list[dict]:
+    """The inverse of review_companies: from a list of disabled companies, flag
+    the ones that are actually a good fit and worth re-enabling.
+
+    Pass only the disabled boards. Returns a list of
+    {index, name, search_domain, reason} — index is the position in the passed
+    `companies` list. Reviews in batches like review_companies.
+    """
+    profile = _build_candidate_profile(config)
+    provider = config.get("llm_provider") or "openrouter"
+    logger.info(f"Reconsidering {len(companies)} disabled companies against your resume via {provider}...")
+    recommended: list[dict] = []
+    for start in range(0, len(companies), batch_size):
+        batch = companies[start:start + batch_size]
+        companies_text = "\n".join(
+            f"{i + 1}. {c.get('name', '?')} — {c.get('search_domain', '')} "
+            f"— {c.get('location', '')} — {c.get('region', '')}"
+            for i, c in enumerate(batch)
+        )
+        prompt = RECONSIDER_PROMPT.format(
+            profile=profile, resume=resume[:2500], companies_text=companies_text
+        )
+        logger.info(f"Reconsidering companies {start + 1}-{start + len(batch)} of {len(companies)}...")
+        raw = chat_with_llm(config, messages=[{"role": "user", "content": prompt}],
+                            temperature=0.2, on_token=on_token)
+        by_name = {c.get("name", "").strip().lower(): j for j, c in enumerate(batch)}
+        for rec in _parse_review(raw):
+            j = by_name.get(rec["name"].strip().lower())
+            if j is not None:
+                c = batch[j]
+                recommended.append({
+                    "index": start + j,
+                    "name": c.get("name", ""),
+                    "search_domain": c.get("search_domain", ""),
+                    "reason": rec["reason"],
+                })
+    logger.info(f"Recommended {len(recommended)} disabled companies to re-enable")
+    return recommended
