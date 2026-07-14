@@ -504,8 +504,14 @@ def _persist_scan(all_scored_jobs: list[dict]) -> int:
 
 def run_scan(config: dict, companies: list[dict]) -> None:
     scan_start = time.time()
+    # A company is scanned unless explicitly disabled ("enabled": false). The key
+    # is optional, so existing companies.json files scan exactly as before.
+    active = [c for c in companies if c.get("enabled", True)]
+    skipped = len(companies) - len(active)
+    companies = active
     total = len(companies)
-    logger.info(f"=== Scan started — {total} companies to check ===")
+    suffix = f" ({skipped} disabled, skipped)" if skipped else ""
+    logger.info(f"=== Scan started — {total} companies to check{suffix} ===")
     logger.info(f"Candidate: {config.get('candidate', {}).get('name', 'unknown')}")
     logger.info(f"Min score: {config.get('candidate', {}).get('min_score', 55)} | Top N: {config.get('candidate', {}).get('top_n', 5)}")
     provider = config.get("llm_provider") or "openrouter"

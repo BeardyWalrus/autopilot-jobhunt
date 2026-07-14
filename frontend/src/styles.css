@@ -108,6 +108,15 @@ td.url { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-spac
 .badge.live { color: var(--ok); background: rgba(52, 199, 123, 0.12); }
 .badge.idle { color: var(--muted); background: var(--panel-2); }
 
+tr.disabled { opacity: 0.4; }
+tr.disabled td { text-decoration: line-through; }
+tr.disabled td:first-child { text-decoration: none; }
+.switch input { width: auto; cursor: pointer; }
+
+.about .kv { display: flex; justify-content: space-between; gap: 16px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.about .kv:last-child { border-bottom: 0; }
+.mono { font-family: 'SF Mono', Menlo, Consolas, monospace; }
+
 .score { font-weight: 700; padding: 2px 8px; border-radius: 6px; }
 .score.high { color: var(--high); background: rgba(52, 199, 123, 0.12); }
 .score.mid { color: var(--mid); background: rgba(224, 179, 65, 0.12); }

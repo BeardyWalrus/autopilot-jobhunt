@@ -82,7 +82,12 @@ def _validate_company(c: Any) -> dict:
     missing = [k for k in _REQUIRED_COMPANY_KEYS if not c.get(k)]
     if missing:
         raise HTTPException(400, f"company missing required fields: {', '.join(missing)}")
-    return {k: c.get(k, "") for k in _REQUIRED_COMPANY_KEYS}
+    cleaned = {k: c.get(k, "") for k in _REQUIRED_COMPANY_KEYS}
+    # Preserve the disable toggle. Only persist it when a board is actually
+    # disabled, so enabled companies.json entries stay clean (no "enabled": true).
+    if c.get("enabled", True) is False:
+        cleaned["enabled"] = False
+    return cleaned
 
 
 @router.put("/companies")
