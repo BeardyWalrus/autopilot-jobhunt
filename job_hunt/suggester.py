@@ -231,6 +231,61 @@ def review_companies(
     return flagged
 
 
+SEARCH_TERMS_PROMPT = """You configure the search that finds jobs for a candidate.
+The scanner runs, per company: site:domain (SENIORITY) (KEYWORDS)
+
+CANDIDATE PROFILE:
+{profile}
+
+RESUME:
+{resume}
+
+From the resume and profile, produce the search terms. Output EXACTLY two lines
+and nothing else (no preamble, no markdown):
+
+KEYWORDS: 4-8 role titles / skills to search for, joined with OR, each multi-word phrase in double quotes. Example: "product manager" OR "product lead" OR "group product manager" OR "director of product"
+SENIORITY: a short OR-list of seniority levels that fit this candidate. Example: senior OR staff OR principal OR lead OR director"""
+
+
+def _parse_search_terms(raw: str) -> dict:
+    """Pull KEYWORDS / SENIORITY lines out of the model output, tolerantly."""
+    keywords = ""
+    seniority = ""
+    for line in raw.splitlines():
+        m = _KV_RE.match(line.strip())
+        if not m:
+            continue
+        key = m.group(1).strip().lower()
+        val = m.group(2).strip().strip("`").strip()
+        if not val:
+            continue
+        if key.startswith("keyword") and not keywords:
+            keywords = val
+        elif (key.startswith("seniority") or key.startswith("level")) and not seniority:
+            seniority = val
+    return {"search_keywords": keywords, "search_seniority": seniority}
+
+
+def suggest_search_terms(config: dict, resume: str, on_token=None) -> dict:
+    """Suggest job-search keywords + seniority from the resume and profile.
+
+    Returns {"search_keywords": str, "search_seniority": str} — either may be
+    empty if the model didn't produce it; the caller lets the user edit before saving.
+    """
+    profile = _build_candidate_profile(config)
+    provider = config.get("llm_provider") or "openrouter"
+    logger.info(f"Suggesting job-search terms from your resume via {provider}...")
+    prompt = SEARCH_TERMS_PROMPT.format(profile=profile, resume=resume[:3000])
+    raw = chat_with_llm(config, messages=[{"role": "user", "content": prompt}],
+                        temperature=0.3, on_token=on_token)
+    terms = _parse_search_terms(raw)
+    logger.info(
+        f"Suggested keywords ({len(terms['search_keywords'])} chars) and "
+        f"seniority ({len(terms['search_seniority'])} chars)"
+    )
+    return terms
+
+
 RECONSIDER_PROMPT = """You are reviewing companies a candidate previously turned OFF (disabled)
 on their job-scan list. Identify which ones are actually a GOOD FIT for this
 candidate's profile and resume and are worth turning back ON.

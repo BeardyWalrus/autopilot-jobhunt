@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '../api.js'
 
 const PROVIDERS = ['openrouter', 'ollama', 'anthropic', 'claude_cli']
@@ -35,6 +35,11 @@ export default function Settings() {
   const [testingOllama, setTestingOllama] = useState(false)
   const [visible, setVisible] = useState([])  // provider cards currently shown
   const [addPick, setAddPick] = useState('')
+  const [stLog, setStLog] = useState(null)     // search-terms suggestion log
+  const [stRunning, setStRunning] = useState(false)
+  const esRef = useRef(null)
+  const stLogRef = useRef(null)
+  const tokenRunRef = useRef(false)
 
   useEffect(() => {
     api.getConfig().then((r) => {
@@ -47,8 +52,21 @@ export default function Settings() {
     }).catch((e) => setMsg({ err: e.message }))
     api.getSchedule().then((s) => setSched({ enabled: s.enabled, time: s.time })).catch(() => {})
     api.health().then(setHealth).catch(() => {})
+    // Reconnect to a search-terms suggestion still running (or just finished), so
+    // navigating away and back doesn't lose it — the job runs on the backend.
+    api.jobsResult().then((r) => {
+      if (r.name !== 'search-terms') return
+      if (r.running) { setStLog(''); setStRunning(true); attachStream() }
+      else if (r.ok && r.result?.kind === 'search_terms') applyTerms(r.result)
+    }).catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => () => esRef.current?.close(), [])
+
+  useEffect(() => {
+    if (stLogRef.current) stLogRef.current.scrollTop = stLogRef.current.scrollHeight
+  }, [stLog])
 
   async function testOllama(baseUrl, silent = false) {
     setTestingOllama(true)
@@ -86,6 +104,65 @@ export default function Settings() {
     } finally {
       setSaving(false)
     }
+  }
+
+  function applyTerms(res) {
+    setCfg((c) => ({
+      ...c,
+      candidate: {
+        ...(c.candidate || {}),
+        ...(res.search_keywords ? { search_keywords: res.search_keywords } : {}),
+        ...(res.search_seniority ? { search_seniority: res.search_seniority } : {}),
+      },
+    }))
+    setMsg(res.search_keywords || res.search_seniority
+      ? { ok: 'Suggested terms filled in below — review and Save settings to apply.' }
+      : { err: 'No terms came back — try again.' })
+  }
+
+  // Open the shared job SSE stream — used to start a fresh suggestion and to
+  // reconnect to a running one after navigating back (it replays the buffer).
+  function attachStream() {
+    esRef.current?.close()
+    const es = new EventSource('/api/companies/jobs/stream')
+    esRef.current = es
+    tokenRunRef.current = false
+    es.onmessage = (ev) =>
+      setStLog((prev) => { tokenRunRef.current = false; return (prev ? prev + '\n' : '') + ev.data })
+    es.addEventListener('token', (ev) =>
+      setStLog((prev) => {
+        const sep = tokenRunRef.current ? '' : prev && !prev.endsWith('\n') ? '\n' : ''
+        tokenRunRef.current = true
+        return (prev || '') + sep + ev.data
+      }),
+    )
+    es.addEventListener('end', async () => {
+      es.close()
+      setStRunning(false)
+      try {
+        const r = await api.jobsResult()
+        if (r.ok === false) { setMsg({ err: r.error || 'Suggestion failed — see the log above.' }); return }
+        if (r.result?.kind === 'search_terms') applyTerms(r.result)
+      } catch (e) {
+        setMsg({ err: e.message })
+      }
+    })
+    es.onerror = () => { es.close(); setStRunning(false) }
+  }
+
+  async function suggestTerms() {
+    setMsg(null)
+    setStLog('')
+    setStRunning(true)
+    try {
+      await api.suggestSearchTerms()
+    } catch (e) {
+      setStRunning(false)
+      setStLog(null)
+      setMsg({ err: e.message })
+      return
+    }
+    attachStream()
   }
 
   const provider = cfg.llm_provider || 'openrouter'
@@ -129,6 +206,21 @@ export default function Settings() {
           These build the query run against each company (<span className="mono">site:domain (seniority) (keywords)</span>).
           Use <span className="mono">OR</span> and quote phrases. Leave blank to use the ML/data-science defaults.
         </p>
+        <div className="row">
+          <button type="button" className="suggest-btn nowrap" onClick={suggestTerms} disabled={stRunning}>
+            {stRunning ? 'Working…' : '✨  Suggest from my résumé'}
+          </button>
+          <span className="muted small">Uses your résumé + profile to fill the fields below — you can edit before saving.</span>
+        </div>
+        {stLog !== null && (
+          <div className="joblog-wrap">
+            <div className="row between">
+              <span className="muted small">{stRunning ? 'Thinking…' : 'Log'}</span>
+              {!stRunning && <button type="button" className="link" onClick={() => setStLog(null)}>hide log</button>}
+            </div>
+            <pre className="log joblog" ref={stLogRef}>{stLog || 'Starting…'}</pre>
+          </div>
+        )}
         <Field label="Search keywords" hint="role titles / skills to search for">
           <textarea rows={2} value={cand.search_keywords || ''}
             onChange={(e) => setCand('search_keywords', e.target.value)}

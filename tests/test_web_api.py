@@ -222,6 +222,30 @@ def test_reconsider_requires_resume(client):
     assert r.status_code == 400 and "resume" in r.json()["detail"].lower()
 
 
+def test_suggest_search_terms_job(client, monkeypatch):
+    c, _ = client
+    c.put("/api/config", json={"candidate": {"resume_path": "resume/r.md"}})
+    c.put("/api/resume", json={"content": "Senior product manager, 10 YOE"})
+    monkeypatch.setattr(
+        "job_hunt.suggester.suggest_search_terms",
+        lambda cfg, resume, on_token=None: {
+            "search_keywords": '"product manager" OR "product lead"',
+            "search_seniority": "senior OR staff",
+        },
+    )
+    assert c.post("/api/candidate/search-terms/suggest").status_code == 200
+    r = _wait_job(c)
+    assert r["ok"] is True and r["result"]["kind"] == "search_terms"
+    assert r["result"]["search_keywords"] == '"product manager" OR "product lead"'
+    assert r["result"]["search_seniority"] == "senior OR staff"
+
+
+def test_suggest_search_terms_requires_resume(client):
+    c, _ = client
+    r = c.post("/api/candidate/search-terms/suggest")
+    assert r.status_code == 400 and "resume" in r.json()["detail"].lower()
+
+
 def test_suggest_job_streams_tokens(client, monkeypatch):
     c, _ = client
     c.put("/api/config", json={"candidate": {"resume_path": "resume/r.md"}})
@@ -328,6 +352,26 @@ def test_scan_forget_conflict_while_running(client, monkeypatch):
     c, _ = client
     monkeypatch.setattr(type(runner), "running", property(lambda self: True))
     assert c.post("/api/scan/forget").status_code == 409
+
+
+def test_scan_seen_list_and_edit(client):
+    c, tmp = client
+    (tmp / "state" / "seen_jobs.json").write_text(json.dumps({"seen_urls": ["a", "b", "c"]}))
+    # count-only by default; list when limit is passed
+    assert c.get("/api/scan/seen").json() == {"seen": 3}
+    listed = c.get("/api/scan/seen?limit=2").json()
+    assert listed["seen"] == 3 and listed["urls"] == ["a", "b"] and listed["truncated"] is True
+    # edit: drop "b" -> it will be re-scanned; de-dups too
+    r = c.put("/api/scan/seen", json={"urls": ["a", "c", "c"]})
+    assert r.status_code == 200 and r.json() == {"seen": 2, "removed": 1}
+    assert json.loads((tmp / "state" / "seen_jobs.json").read_text()) == {"seen_urls": ["a", "c"]}
+
+
+def test_scan_seen_set_validation_and_conflict(client, monkeypatch):
+    c, _ = client
+    assert c.put("/api/scan/seen", json={"urls": [1, 2]}).status_code == 400
+    monkeypatch.setattr(type(runner), "running", property(lambda self: True))
+    assert c.put("/api/scan/seen", json={"urls": ["a"]}).status_code == 409
 
 
 # --- results ------------------------------------------------------------------

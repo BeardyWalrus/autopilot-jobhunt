@@ -206,6 +206,26 @@ def reconsider_start() -> dict:
     return jobs.status()
 
 
+@router.post("/candidate/search-terms/suggest")
+def suggest_search_terms_start() -> dict:
+    """Start a background job that suggests job-search keywords/seniority from the
+    resume. Shares the same job runner + stream/result endpoints as the Boards
+    suggest/review jobs (one at a time), so it survives navigating away."""
+    from job_hunt.suggester import suggest_search_terms
+
+    cfg = _read_json(paths.config_path(), {})
+    resume = _resume_or_400(cfg)
+
+    def job():
+        return {"kind": "search_terms", **suggest_search_terms(cfg, resume, on_token=jobs.emit_token)}
+
+    try:
+        jobs.start("search-terms", job)
+    except RuntimeError as e:
+        raise HTTPException(409, str(e))
+    return jobs.status()
+
+
 @router.get("/companies/jobs/result")
 def jobs_result() -> dict:
     return {**jobs.status(), "result": jobs.result}
@@ -316,11 +336,47 @@ def scan_stop() -> dict:
     return {"stopped": stopped, **runner.status()}
 
 
-@router.get("/scan/seen")
-def scan_seen() -> dict:
-    """How many job URLs the scanner remembers as already-seen (and skips)."""
+def _read_seen_urls() -> list:
     state = _read_json(paths.seen_jobs_path(), {}) or {}
-    return {"seen": len(state.get("seen_urls", []))}
+    urls = state.get("seen_urls", [])
+    return urls if isinstance(urls, list) else []
+
+
+def _write_seen_urls(urls: list) -> None:
+    path = paths.seen_jobs_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"seen_urls": urls}, indent=2))
+
+
+@router.get("/scan/seen")
+def scan_seen(limit: int = 0) -> dict:
+    """The scanner's seen-jobs memory: URLs it will skip on the next scan.
+
+    Returns the total count always; include ?limit=N to also get up to N URLs
+    (limit=0, the default, returns the count only — cheap for the button badge).
+    """
+    urls = _read_seen_urls()
+    body: dict = {"seen": len(urls)}
+    if limit:
+        body["urls"] = urls[:limit]
+        body["truncated"] = len(urls) > limit
+    return body
+
+
+@router.put("/scan/seen")
+def scan_seen_set(urls: list = Body(..., embed=True)) -> dict:
+    """Replace the seen-jobs memory with an edited list. Removing a URL makes the
+    next scan re-discover and re-score just that job."""
+    if runner.running:
+        raise HTTPException(409, "A scan is running — stop it before editing history.")
+    if not isinstance(urls, list) or not all(isinstance(u, str) for u in urls):
+        raise HTTPException(400, "urls must be a list of strings")
+    before = len(_read_seen_urls())
+    # De-dup while preserving order.
+    seen: set = set()
+    cleaned = [u for u in urls if not (u in seen or seen.add(u))]
+    _write_seen_urls(cleaned)
+    return {"seen": len(cleaned), "removed": max(0, before - len(cleaned))}
 
 
 @router.post("/scan/forget")
@@ -333,10 +389,8 @@ def scan_forget() -> dict:
     """
     if runner.running:
         raise HTTPException(409, "A scan is running — stop it before clearing history.")
-    path = paths.seen_jobs_path()
-    before = len((_read_json(path, {}) or {}).get("seen_urls", []))
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"seen_urls": []}, indent=2))
+    before = len(_read_seen_urls())
+    _write_seen_urls([])
     return {"forgotten": before, "seen": 0}
 
 
