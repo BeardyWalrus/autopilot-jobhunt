@@ -31,6 +31,7 @@ export const api = {
     req('/companies/suggest', { method: 'POST', body: JSON.stringify({ count }) }),
   reviewStart: (includeDisabled = true) =>
     req('/companies/review', { method: 'POST', body: JSON.stringify({ include_disabled: includeDisabled }) }),
+  reconsiderStart: () => req('/companies/reconsider', { method: 'POST' }),
   jobsResult: () => req('/companies/jobs/result'),
 
   getResume: () => req('/resume'),

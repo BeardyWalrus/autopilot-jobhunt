@@ -77,3 +77,23 @@ def test_review_companies_ignores_unmatched_names(monkeypatch):
     monkeypatch.setattr(suggester, "chat_with_llm", lambda *a, **k: "NAME: Ghost Corp\nREASON: n/a")
     flagged = suggester.review_companies({"candidate": {}}, "r", [{"name": "OpenAI", "search_domain": "openai.com"}])
     assert flagged == []
+
+
+# --- reconsider_companies ------------------------------------------------------
+
+def test_reconsider_companies_recommends_by_name(monkeypatch):
+    monkeypatch.setattr(suggester, "chat_with_llm", lambda *a, **k: "NAME: OpenAI\nREASON: strong ML fit")
+    disabled = [
+        {"name": "Acme Bank", "search_domain": "acmebank.com"},
+        {"name": "OpenAI", "search_domain": "openai.com"},
+    ]
+    rec = suggester.reconsider_companies({"candidate": {"name": "Ada"}}, "resume", disabled)
+    assert len(rec) == 1
+    assert rec[0]["name"] == "OpenAI" and rec[0]["index"] == 1
+    assert rec[0]["reason"] == "strong ML fit"
+
+
+def test_reconsider_companies_ignores_unmatched_names(monkeypatch):
+    monkeypatch.setattr(suggester, "chat_with_llm", lambda *a, **k: "NAME: Ghost Corp\nREASON: n/a")
+    rec = suggester.reconsider_companies({"candidate": {}}, "r", [{"name": "OpenAI", "search_domain": "openai.com"}])
+    assert rec == []

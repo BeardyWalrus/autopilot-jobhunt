@@ -175,6 +175,53 @@ def test_review_requires_resume(client):
     assert r.status_code == 400 and "resume" in r.json()["detail"].lower()
 
 
+def test_reconsider_job_only_reviews_disabled(client, monkeypatch):
+    c, _ = client
+    c.put("/api/config", json={"candidate": {"resume_path": "resume/r.md"}})
+    c.put("/api/resume", json={"content": "Senior ML engineer"})
+    c.put("/api/companies", json=[
+        {"name": "On", "careers_url": "https://on.co/c", "search_domain": "on.co",
+         "location": "L", "region": "EU"},
+        {"name": "Off", "careers_url": "https://off.co/c", "search_domain": "off.co",
+         "location": "L", "region": "EU", "enabled": False},
+    ])
+    seen = {}
+
+    def fake(cfg, resume, companies, on_token=None):
+        seen["names"] = [x["name"] for x in companies]
+        return [{"index": 0, "name": "Off", "search_domain": "off.co", "reason": "actually a good fit"}]
+
+    monkeypatch.setattr("job_hunt.suggester.reconsider_companies", fake)
+    assert c.post("/api/companies/reconsider").status_code == 200
+    r = _wait_job(c)
+    assert r["ok"] is True and r["result"]["kind"] == "reconsider"
+    assert seen["names"] == ["Off"]  # only disabled boards are reconsidered
+    assert r["result"]["recommended"][0]["name"] == "Off" and r["result"]["reviewed"] == 1
+
+
+def test_reconsider_no_disabled_boards(client, monkeypatch):
+    c, _ = client
+    c.put("/api/config", json={"candidate": {"resume_path": "resume/r.md"}})
+    c.put("/api/resume", json={"content": "resume"})
+    c.put("/api/companies", json=[
+        {"name": "On", "careers_url": "https://on.co/c", "search_domain": "on.co",
+         "location": "L", "region": "EU"}])
+
+    def boom(*a, **k):
+        raise AssertionError("should not call the LLM when nothing is disabled")
+
+    monkeypatch.setattr("job_hunt.suggester.reconsider_companies", boom)
+    assert c.post("/api/companies/reconsider").status_code == 200
+    r = _wait_job(c)
+    assert r["ok"] is True and r["result"]["recommended"] == [] and r["result"]["reviewed"] == 0
+
+
+def test_reconsider_requires_resume(client):
+    c, _ = client
+    r = c.post("/api/companies/reconsider")
+    assert r.status_code == 400 and "resume" in r.json()["detail"].lower()
+
+
 def test_suggest_job_streams_tokens(client, monkeypatch):
     c, _ = client
     c.put("/api/config", json={"candidate": {"resume_path": "resume/r.md"}})

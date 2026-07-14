@@ -113,14 +113,17 @@ td.url { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-spac
 .badge.idle { color: var(--muted); background: var(--panel-2); }
 
 .board-actions { display: flex; gap: 10px; margin: 14px 0 4px; }
-.suggest-btn, .review-btn {
+.suggest-btn, .review-btn, .reconsider-btn {
   flex: 1; padding: 11px 16px; white-space: nowrap; text-align: center; font-size: 14px;
 }
 .suggest-btn { background: rgba(79, 140, 255, 0.1); border-color: var(--accent); color: var(--accent); }
 .suggest-btn:hover:not(:disabled) { background: rgba(79, 140, 255, 0.18); }
 .review-btn { background: rgba(224, 179, 65, 0.1); border-color: var(--mid); color: var(--mid); }
 .review-btn:hover:not(:disabled) { background: rgba(224, 179, 65, 0.18); }
+.reconsider-btn { background: rgba(52, 199, 123, 0.1); border-color: var(--ok); color: var(--ok); }
+.reconsider-btn:hover:not(:disabled) { background: rgba(52, 199, 123, 0.18); }
 .suggestions.flagged { border-color: rgba(224, 179, 65, 0.4); }
+.suggestions.recommended { border-color: rgba(52, 199, 123, 0.4); }
 .joblog-wrap { margin-top: 12px; }
 .joblog { height: 160px; margin-top: 4px; }
 

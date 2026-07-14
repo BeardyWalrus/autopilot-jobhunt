@@ -182,6 +182,30 @@ def review_start(include_disabled: bool = Body(True, embed=True)) -> dict:
     return jobs.status()
 
 
+@router.post("/companies/reconsider")
+def reconsider_start() -> dict:
+    """Start a background reconsider job: look through the currently-disabled
+    boards and recommend any that are actually a good fit and worth re-enabling.
+    See /companies/jobs/* for the live stream + result.
+    """
+    from job_hunt.suggester import reconsider_companies
+
+    cfg = _read_json(paths.config_path(), {})
+    resume = _resume_or_400(cfg)
+    companies = _read_json(paths.companies_path(), [])
+    disabled = [c for c in companies if not c.get("enabled", True)]
+
+    def job():
+        recommended = reconsider_companies(cfg, resume, disabled, on_token=jobs.emit_token) if disabled else []
+        return {"kind": "reconsider", "recommended": recommended, "reviewed": len(disabled)}
+
+    try:
+        jobs.start("reconsider", job)
+    except RuntimeError as e:
+        raise HTTPException(409, str(e))
+    return jobs.status()
+
+
 @router.get("/companies/jobs/result")
 def jobs_result() -> dict:
     return {**jobs.status(), "result": jobs.result}

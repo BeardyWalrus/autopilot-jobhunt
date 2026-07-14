@@ -9,6 +9,19 @@ reconstructed from git history.
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-07-14
+
+### Added
+- **Reconsider my off boards** — a third Job Boards button that looks through the
+  currently-disabled boards and recommends any that are actually a good fit for
+  your resume, with a one-click **Enable** to turn each back on. The inverse of
+  "Review my list for poor fits."
+
+### Fixed
+- Scans no longer try to send a **Telegram** notification when Telegram was never
+  set up — the shipped placeholder token/chat_id values are now treated as
+  unconfigured, so the scan cleanly relies on the CSV instead of erroring.
+
 ## [0.6.0] — 2026-07-14
 
 ### Added
