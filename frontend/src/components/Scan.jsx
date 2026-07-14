@@ -40,6 +40,33 @@ export default function Scan() {
     api.results().then((r) => setResults(r.jobs)).catch(() => {})
   }
 
+  async function deleteResult(job) {
+    setMsg(null)
+    setResults((rs) => rs.filter((r) => r.url !== job.url))  // optimistic
+    try {
+      await api.deleteResult(job.url)
+    } catch (e) {
+      setMsg({ err: e.message })
+      loadResults()  // resync if the delete didn't take
+    }
+  }
+
+  async function clearResults() {
+    if (!results.length) return
+    if (!window.confirm(
+      `Delete all ${results.length} result(s)?\n\n` +
+      'This clears the current scan results only — your job history is kept, and ' +
+      'these jobs stay "seen" so they won\'t re-appear next scan.',
+    )) return
+    setMsg(null)
+    try {
+      await api.clearResults()
+      setResults([])
+    } catch (e) {
+      setMsg({ err: e.message })
+    }
+  }
+
   function loadSeen() {
     api.scanSeen().then((r) => setSeen(r.seen)).catch(() => {})
   }
@@ -199,7 +226,10 @@ export default function Scan() {
       <div className="card">
         <div className="row between">
           <h2>Results <span className="muted">({results.length})</span></h2>
-          <button className="link" onClick={loadResults}>refresh</button>
+          <div className="row">
+            <button className="link" onClick={loadResults}>refresh</button>
+            <button className="link danger" onClick={clearResults} disabled={!results.length}>clear all</button>
+          </div>
         </div>
         <div className="tablewrap">
           <table>
@@ -208,14 +238,17 @@ export default function Scan() {
             </thead>
             <tbody>
               {results.map((j, i) => (
-                <tr key={i}>
+                <tr key={j.url || i}>
                   <td><span className={scoreClass(j.score)}>{j.score ?? '—'}</span></td>
                   <td>{j.company}</td>
                   <td>{j.extracted_title || j.title}</td>
                   <td>{j.location_remote || j.location}</td>
                   <td className="small">{j.stack}</td>
                   <td className="small">{j.reason}</td>
-                  <td>{j.url && <a href={j.url} target="_blank" rel="noreferrer">Apply</a>}</td>
+                  <td className="nowrap">
+                    {j.url && <a href={j.url} target="_blank" rel="noreferrer">Apply</a>}
+                    <button className="link danger" onClick={() => deleteResult(j)} title="Remove from results">delete</button>
+                  </td>
                 </tr>
               ))}
               {results.length === 0 && <tr><td colSpan={7} className="muted center">No results yet — run a scan.</td></tr>}

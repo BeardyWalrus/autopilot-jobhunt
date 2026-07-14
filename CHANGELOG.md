@@ -9,6 +9,14 @@ reconstructed from git history.
 
 ## [Unreleased]
 
+## [0.12.0] — 2026-07-14
+
+### Added
+- **Delete scan results** — each row on the Scan tab's Results table now has a
+  **delete** action, plus a **clear all** button. Deleting a result leaves its
+  URL in the seen-jobs memory (so it won't re-appear next scan) and keeps your job
+  history intact. Backed by `DELETE /api/results` (by URL) and `DELETE /api/results/all`.
+
 ## [0.11.0] — 2026-07-14
 
 ### Changed
