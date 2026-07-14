@@ -72,6 +72,20 @@ def test_company_validation_rejects_missing_fields(client):
     assert r.status_code == 400 and "careers_url" in r.json()["detail"]
 
 
+def test_company_enabled_flag_preserved(client):
+    c, tmp = client
+    base = {"careers_url": "https://x.co/careers", "search_domain": "x.co",
+            "location": "Remote", "region": "EU"}
+    payload = [
+        {**base, "name": "On"},                       # no flag -> enabled, stays clean
+        {**base, "name": "Off", "careers_url": "https://y.co/careers", "enabled": False},
+    ]
+    c.put("/api/companies", json=payload)
+    saved = json.loads((tmp / "companies.json").read_text())
+    assert "enabled" not in saved[0]          # enabled companies stay flag-free
+    assert saved[1]["enabled"] is False       # disabled flag persisted
+
+
 # --- resume -------------------------------------------------------------------
 
 def test_resume_put_get_and_upload(client):

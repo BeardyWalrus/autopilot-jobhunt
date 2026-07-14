@@ -31,8 +31,15 @@ export default function Boards() {
 
   if (!companies) return <div className="card">Loading job boards…</div>
 
+  const activeCount = companies.filter((c) => c.enabled !== false).length
+
   function removeAt(idx) {
     setCompanies(companies.filter((_, i) => i !== idx))
+    setDirty(true)
+  }
+
+  function toggleAt(idx) {
+    setCompanies(companies.map((c, i) => (i === idx ? { ...c, enabled: c.enabled === false } : c)))
     setDirty(true)
   }
 
@@ -63,7 +70,7 @@ export default function Boards() {
     <div className="stack">
       <div className="card">
         <div className="row between">
-          <h2>Job boards <span className="muted">({companies.length})</span></h2>
+          <h2>Job boards <span className="muted">({activeCount} on / {companies.length})</span></h2>
           <div className="row">
             <input placeholder="Search name / domain / location" value={q} onChange={(e) => setQ(e.target.value)} />
             <select value={region} onChange={(e) => setRegion(e.target.value)}>
@@ -75,11 +82,16 @@ export default function Boards() {
         <div className="tablewrap">
           <table>
             <thead>
-              <tr><th>Company</th><th>Careers URL</th><th>Search domain</th><th>Location</th><th>Region</th><th></th></tr>
+              <tr><th>On</th><th>Company</th><th>Careers URL</th><th>Search domain</th><th>Location</th><th>Region</th><th></th></tr>
             </thead>
             <tbody>
               {filtered.map(({ c, i }) => (
-                <tr key={i}>
+                <tr key={i} className={c.enabled === false ? 'disabled' : ''}>
+                  <td>
+                    <label className="switch" title={c.enabled === false ? 'Disabled — skipped on scans' : 'Enabled'}>
+                      <input type="checkbox" checked={c.enabled !== false} onChange={() => toggleAt(i)} />
+                    </label>
+                  </td>
                   <td>{c.name}</td>
                   <td className="url"><a href={c.careers_url} target="_blank" rel="noreferrer">{c.careers_url}</a></td>
                   <td>{c.search_domain}</td>
@@ -88,7 +100,7 @@ export default function Boards() {
                   <td><button className="link danger" onClick={() => removeAt(i)}>remove</button></td>
                 </tr>
               ))}
-              {filtered.length === 0 && <tr><td colSpan={6} className="muted center">No matches.</td></tr>}
+              {filtered.length === 0 && <tr><td colSpan={7} className="muted center">No matches.</td></tr>}
             </tbody>
           </table>
         </div>

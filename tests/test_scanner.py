@@ -325,6 +325,21 @@ def scan_setup(tmp_path, monkeypatch):
     return cfg, companies
 
 
+def test_run_scan_skips_disabled_company(scan_setup, monkeypatch):
+    cfg, companies = scan_setup
+    companies = [
+        companies[0],  # Acme, enabled (no flag)
+        {"name": "Disabled Co", "careers_url": "c", "search_domain": "d.co",
+         "location": "NY", "region": "NA", "enabled": False},
+    ]
+    scanned = []
+    monkeypatch.setattr(scanner, "discover_job_urls",
+                        lambda tf, co, seen, cand=None: (scanned.append(co["name"]), [])[1])
+    monkeypatch.setattr(scanner, "send_telegram", lambda *a: True)
+    scanner.run_scan(cfg, companies)
+    assert "Acme" in scanned and "Disabled Co" not in scanned
+
+
 def test_run_scan_no_telegram_writes_csv(scan_setup, monkeypatch):
     sent = []
     monkeypatch.setattr(scanner, "send_telegram", lambda *a: sent.append(a))

@@ -6,12 +6,14 @@ const PROVIDERS = ['openrouter', 'ollama', 'anthropic', 'claude_cli']
 export default function Settings() {
   const [cfg, setCfg] = useState(null)
   const [sched, setSched] = useState({ enabled: false, time: '02:00' })
+  const [health, setHealth] = useState(null)
   const [msg, setMsg] = useState(null)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     api.getConfig().then((r) => setCfg(r.config)).catch((e) => setMsg({ err: e.message }))
     api.getSchedule().then((s) => setSched({ enabled: s.enabled, time: s.time })).catch(() => {})
+    api.health().then(setHealth).catch(() => {})
   }, [])
 
   if (!cfg) return <div className="card">Loading settings…</div>
@@ -117,6 +119,12 @@ export default function Settings() {
         <button className="primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save settings'}</button>
         {msg?.ok && <span className="ok">{msg.ok}</span>}
         {msg?.err && <span className="err">{msg.err}</span>}
+      </div>
+
+      <div className="card about">
+        <h2>About</h2>
+        <div className="kv"><span className="muted">Server version</span><span className="mono">{health ? `v${health.version}` : '…'}</span></div>
+        <div className="kv"><span className="muted">Project directory</span><span className="mono small">{health?.project_dir || '…'}</span></div>
       </div>
     </div>
   )
