@@ -48,8 +48,13 @@ frontend/       — React + Vite SPA (built into job_hunt/web/static)
 A FastAPI + React app to manage config, job boards, resume, and scans from a browser.
 
 ```bash
-docker compose up --build   # recommended — open http://127.0.0.1:8000
+docker compose up --build   # build locally — open http://127.0.0.1:8000
+docker compose pull         # or pull the prebuilt image from GHCR, then: up -d
 ```
+
+**Prebuilt image:** `ghcr.io/beardywalrus/autopilot-jobhunt-web:latest` (multi-arch
+amd64/arm64), published by `.github/workflows/docker-publish.yml` on every push to
+`main` and on `v*` tags.
 
 Docker seeds `./data` (config.json, companies.json, resume/, state/, output/) on
 first run; edit everything from the **Settings**, **Job Boards**, and **Resume**
