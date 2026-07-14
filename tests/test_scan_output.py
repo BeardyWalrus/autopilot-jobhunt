@@ -23,7 +23,7 @@ def scan_env(tmp_path, monkeypatch):
         {"url": "https://x.co/jobs/1", "title": "ML Engineer",
          "company": co["name"], "location": co["location"], "region": co["region"]},
     ])
-    monkeypatch.setattr(scanner, "fetch_job_details", lambda tf, jobs: jobs)
+    monkeypatch.setattr(scanner, "fetch_job_details", lambda tf, jobs, label="": jobs)
     monkeypatch.setattr(scanner, "score_jobs", lambda jobs, resume, config: [
         {**jobs[0], "score": 90, "extracted_title": "ML Engineer",
          "stack": "Python, LLMs", "location_remote": "Remote", "reason": "Strong fit"},

@@ -206,26 +206,40 @@ def discover_job_urls(
     return new
 
 
-def fetch_job_details(tf: TinyFish, jobs: list[dict]) -> list[dict]:
+def fetch_job_details(tf: TinyFish, jobs: list[dict], label: str = "") -> list[dict]:
     enriched = []
-    for i in range(0, len(jobs), 10):
+    total = len(jobs)
+    total_batches = (total + 9) // 10
+    prefix = f"  [{label}] " if label else "  "
+    for i in range(0, total, 10):
         batch = jobs[i: i + 10]
         urls = [j["url"] for j in batch]
-        logger.debug(f"  Fetching details for {len(batch)} job(s): {[j['title'][:40] for j in batch]}")
+        batch_num = i // 10 + 1
+        # INFO (not DEBUG) so the long, rate-limit-paced fetch loop reports live
+        # progress instead of going silent for minutes after "fetching details...".
+        logger.info(
+            f"{prefix}Fetching details: batch {batch_num}/{total_batches} "
+            f"({min(i + len(batch), total)}/{total} jobs)..."
+        )
+        logger.debug(f"{prefix}Batch {batch_num} URLs: {[j['title'][:40] for j in batch]}")
         resp = _fetch_with_ratelimit(tf, urls, format="markdown")
         if not resp:
+            logger.warning(f"{prefix}Batch {batch_num}/{total_batches} returned no content — keeping URLs unenriched")
             enriched.extend(batch)
             continue
         fetched = {r.url: r for r in resp.results}
+        got = 0
         for job in batch:
             r = fetched.get(job["url"])
             if r and r.text:
                 job["content"] = r.text[:3000]
                 job["title"] = r.title or job["title"]
-                logger.debug(f"    Fetched '{job['title']}' — {len(r.text)} chars")
+                got += 1
+                logger.debug(f"{prefix}  Fetched '{job['title']}' — {len(r.text)} chars")
             else:
-                logger.debug(f"    No content for: {job['url']}")
+                logger.debug(f"{prefix}  No content for: {job['url']}")
             enriched.append(job)
+        logger.info(f"{prefix}Batch {batch_num}/{total_batches} done — {got}/{len(batch)} enriched")
     return enriched
 
 
@@ -341,6 +355,30 @@ def _export_to_csv(jobs: list[dict], label: str) -> Path:
     return out_path
 
 
+def _persist_scan(all_scored_jobs: list[dict]) -> int:
+    """Write last_scan.json and merge new rows into job_history.json.
+
+    Idempotent and safe to call repeatedly mid-scan: history is deduped by URL,
+    so incremental checkpoints leave a complete, up-to-date record on disk even
+    if a later company crashes the run. Returns the number of new history rows.
+    """
+    LAST_SCAN_FILE.parent.mkdir(exist_ok=True)
+    LAST_SCAN_FILE.write_text(json.dumps(all_scored_jobs, indent=2))
+
+    history: list[dict] = []
+    if JOB_HISTORY_FILE.exists():
+        try:
+            history = json.loads(JOB_HISTORY_FILE.read_text())
+        except Exception:
+            history = []
+    existing_urls = {j["url"] for j in history}
+    new_entries = [j for j in all_scored_jobs if j["url"] not in existing_urls]
+    if new_entries:
+        history.extend(new_entries)
+        JOB_HISTORY_FILE.write_text(json.dumps(history, indent=2))
+    return len(new_entries)
+
+
 def run_scan(config: dict, companies: list[dict]) -> None:
     scan_start = time.time()
     total = len(companies)
@@ -374,10 +412,18 @@ def run_scan(config: dict, companies: list[dict]) -> None:
     seen_urls: set = set(state.get("seen_urls", []))
     logger.info(f"State loaded — {len(seen_urls)} previously seen URLs")
 
+    scan_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     all_scored_jobs: list[dict] = []
     errors: list[str] = []
     companies_scanned = 0
     companies_with_jobs = 0
+
+    def _checkpoint() -> None:
+        """Flush seen URLs + results to disk so an interrupted scan keeps its work."""
+        state["seen_urls"] = list(seen_urls)
+        state["last_scan"] = datetime.now(timezone.utc).isoformat()
+        save_state(state)
+        _persist_scan(all_scored_jobs)
 
     for idx, company in enumerate(companies, 1):
         logger.info(f"[{idx}/{total}] Scanning {company['name']}...")
@@ -389,17 +435,20 @@ def run_scan(config: dict, companies: list[dict]) -> None:
                 continue
 
             logger.info(f"  {len(new_jobs)} new job URL(s) — fetching details...")
-            new_jobs = fetch_job_details(tf, new_jobs)
+            new_jobs = fetch_job_details(tf, new_jobs, label=company["name"])
             seen_urls.update(j["url"] for j in new_jobs)
 
-            logger.info(f"  Scoring {len(new_jobs)} job(s)...")
+            num_batches = (len(new_jobs) + 9) // 10
+            logger.info(f"  Scoring {len(new_jobs)} job(s) in {num_batches} batch(es)...")
             scored: list[dict] = []
             try:
                 for i in range(0, len(new_jobs), 10):
                     batch = new_jobs[i: i + 10]
-                    logger.debug(f"  Scoring batch {i // 10 + 1} ({len(batch)} jobs)...")
+                    logger.info(f"  Scoring batch {i // 10 + 1}/{num_batches} ({len(batch)} jobs)...")
                     batch_scored = score_jobs(batch, resume, config)
                     scored.extend(batch_scored)
+                    if batch_scored:
+                        logger.info(f"  Batch {i // 10 + 1}/{num_batches}: {len(batch_scored)} passed threshold")
             except Exception as score_err:
                 logger.error(f"  Scoring failed: {score_err}")
                 errors.append(f"⚠️ Scoring failed for {company['name']}: {score_err}")
@@ -407,6 +456,8 @@ def run_scan(config: dict, companies: list[dict]) -> None:
                 scored = new_jobs
 
             if scored:
+                for job in scored:
+                    job["scan_date"] = scan_date
                 all_scored_jobs.extend(scored)
                 companies_with_jobs += 1
                 titles = [j.get("extracted_title") or j.get("title", "?") for j in scored[:3]]
@@ -418,37 +469,26 @@ def run_scan(config: dict, companies: list[dict]) -> None:
             msg = f"❌ {company['name']}: {company_err}"
             errors.append(msg)
             logger.error(f"  Company scan failed: {company_err}")
+            # Persist what we have before moving on, so one company's failure
+            # doesn't cost us every result gathered so far.
+            _checkpoint()
             continue
 
-    state["seen_urls"] = list(seen_urls)
-    state["last_scan"] = datetime.now(timezone.utc).isoformat()
-    save_state(state)
-    logger.debug("State saved")
+        # Checkpoint after every company: seen URLs + results are on disk so a
+        # crash, timeout, or Ctrl-C mid-scan leaves a recoverable state.
+        _checkpoint()
+        logger.debug(
+            f"  Checkpoint saved ({len(all_scored_jobs)} jobs, {len(seen_urls)} seen URLs)"
+        )
+
+    logger.info("All companies scanned — finalising results")
+    _checkpoint()
+    logger.debug(f"Final save: {len(all_scored_jobs)} total jobs → {LAST_SCAN_FILE}")
 
     top_jobs = sorted(
         [j for j in all_scored_jobs if j.get("score", 0) >= min_score],
         key=lambda x: x.get("score", 0), reverse=True
     )[:top_n]
-
-    scan_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    for job in all_scored_jobs:
-        job["scan_date"] = scan_date
-
-    LAST_SCAN_FILE.parent.mkdir(exist_ok=True)
-    LAST_SCAN_FILE.write_text(json.dumps(all_scored_jobs, indent=2))
-    logger.debug(f"Last scan saved: {len(all_scored_jobs)} total jobs → {LAST_SCAN_FILE}")
-
-    history: list[dict] = []
-    if JOB_HISTORY_FILE.exists():
-        try:
-            history = json.loads(JOB_HISTORY_FILE.read_text())
-        except Exception:
-            history = []
-    existing_urls = {j["url"] for j in history}
-    new_entries = [j for j in all_scored_jobs if j["url"] not in existing_urls]
-    history.extend(new_entries)
-    JOB_HISTORY_FILE.write_text(json.dumps(history, indent=2))
-    logger.debug(f"Job history updated: +{len(new_entries)} new entries ({len(history)} total)")
 
     elapsed = time.time() - scan_start
     logger.info(
