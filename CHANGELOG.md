@@ -9,6 +9,15 @@ reconstructed from git history.
 
 ## [Unreleased]
 
+### Added
+- **Results persist across scans, with a status.** The Scan tab's results no longer
+  get wiped by the next run — they accumulate in a new cumulative store
+  (`state/results.json`) and stay until you mark each **Applied** / **Not a fit** or
+  delete it. New scans merge in fresh matches (and refresh scores) without touching
+  your statuses. A **Hide handled** toggle declutters the list. Backed by
+  `PUT /api/results/status`. (`last_scan.json` is unchanged, so CLI `draft N` still
+  works; existing installs are migrated from it on first use so nothing is lost.)
+
 ### Changed
 - **Docker image now publishes at release time only.** The GHCR `:latest` image is
   pushed on a `v*` tag or a manual **Run workflow**, not on every merge to `main`.
@@ -16,6 +25,11 @@ reconstructed from git history.
   accumulate on `main` and ship together when a release is cut.
 
 ### Fixed
+- **Scan log no longer freezes during a long LLM call.** A slow model could idle the
+  live-log connection long enough for a proxy to drop it; the UI then stopped updating
+  and only caught up on a manual refresh. The stream now auto-reconnects on a transient
+  drop (instead of giving up), reconciles the buffered log on reconnect, and has a
+  15s status backstop so completion is always reflected.
 - **Mobile nav tabs.** On phones the four tabs (Scan, Job Boards, Resume, Settings)
   were a cramped horizontal-scroll strip; they now lay out as a 2×2 grid of large,
   tappable buttons on their own row below the brand. Desktop is unchanged.

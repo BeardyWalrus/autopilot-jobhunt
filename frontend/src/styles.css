@@ -112,6 +112,16 @@ a.apply {
 }
 a.apply:hover { background: rgba(79, 140, 255, 0.22); text-decoration: none; }
 
+.chip {
+  padding: 4px 9px; border-radius: 20px; font-size: 12px; white-space: nowrap;
+  background: var(--panel-2); border: 1px solid var(--border); color: var(--muted);
+}
+.chip + .chip { margin-left: 6px; }
+.chip:hover { color: var(--text); border-color: var(--accent); }
+.chip.on.ok { background: rgba(52, 199, 123, 0.14); border-color: var(--ok); color: var(--ok); }
+.chip.on.muted-chip { background: var(--panel-2); border-color: var(--muted); color: var(--text); }
+tr.handled { opacity: 0.5; }
+
 .log {
   background: #0b0e12; border: 1px solid var(--border); border-radius: 8px;
   padding: 12px; height: 320px; overflow: auto; white-space: pre-wrap; margin: 0;

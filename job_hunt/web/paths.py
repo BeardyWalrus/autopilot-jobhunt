@@ -25,6 +25,10 @@ def last_scan_path() -> Path:
     return project_dir() / "state" / "last_scan.json"
 
 
+def results_path() -> Path:
+    return project_dir() / "state" / "results.json"
+
+
 def job_history_path() -> Path:
     return project_dir() / "state" / "job_history.json"
 

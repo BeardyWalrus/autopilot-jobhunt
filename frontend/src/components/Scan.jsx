@@ -12,8 +12,10 @@ export default function Scan() {
   const [seenTrunc, setSeenTrunc] = useState(false)
   const [seenDirty, setSeenDirty] = useState(false)
   const [seenSaving, setSeenSaving] = useState(false)
+  const [hideHandled, setHideHandled] = useState(false)
   const logRef = useRef(null)
   const esRef = useRef(null)
+  const pollRef = useRef(null)
 
   useEffect(() => {
     loadResults()
@@ -29,7 +31,7 @@ export default function Scan() {
         api.scanLogs().then((r) => setLines(r.lines || [])).catch(() => {})
       }
     }).catch(() => {})
-    return () => esRef.current?.close()
+    return () => { esRef.current?.close(); clearInterval(pollRef.current) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -122,19 +124,57 @@ export default function Scan() {
     }
   }
 
+  function finishStream(es) {
+    es.close()
+    if (esRef.current === es) esRef.current = null
+    clearInterval(pollRef.current)
+    setRunning(false)
+    // Pull the authoritative final log + results the stream may have missed.
+    api.scanLogs().then((r) => setLines(r.lines || [])).catch(() => {})
+    loadResults()
+    loadSeen()
+  }
+
   function openStream() {
     esRef.current?.close()
+    clearInterval(pollRef.current)
     setLines([])
+    let opened = false
     const es = new EventSource('/api/scan/stream')
     esRef.current = es
+    // On a reconnect the server replays its whole buffer, so clear first to avoid
+    // duplicating the log; the first open keeps the setLines([]) above.
+    es.onopen = () => { if (opened) setLines([]); opened = true }
     es.onmessage = (e) => setLines((prev) => [...prev, e.data])
-    es.addEventListener('end', () => {
-      es.close()
-      setRunning(false)
+    es.addEventListener('end', () => finishStream(es))
+    es.onerror = async () => {
+      // A long LLM call can idle the connection long enough for a proxy to drop
+      // it. Don't kill the stream — EventSource auto-reconnects. Only finish when
+      // the scan has actually ended (no 'end' event will arrive in that case).
+      try {
+        const s = await api.scanStatus()
+        if (!s.running) finishStream(es)
+      } catch { /* transient — keep the EventSource open to retry */ }
+    }
+    // Backstop: if SSE gets wedged, still notice completion within ~15s.
+    pollRef.current = setInterval(async () => {
+      try {
+        const s = await api.scanStatus()
+        if (!s.running) finishStream(es)
+      } catch { /* ignore */ }
+    }, 15000)
+  }
+
+  async function setStatus(job, status) {
+    setMsg(null)
+    const next = job.status === status ? 'new' : status  // click again to undo
+    setResults((rs) => rs.map((r) => (r.url === job.url ? { ...r, status: next } : r)))
+    try {
+      await api.setResultStatus(job.url, next)
+    } catch (e) {
+      setMsg({ err: e.message })
       loadResults()
-      loadSeen()
-    })
-    es.onerror = () => { es.close(); setRunning(false) }
+    }
   }
 
   async function start() {
@@ -155,6 +195,11 @@ export default function Scan() {
       setMsg({ err: e.message })
     }
   }
+
+  const handledCount = results.filter((j) => j.status && j.status !== 'new').length
+  const visibleResults = hideHandled
+    ? results.filter((j) => !j.status || j.status === 'new')
+    : results
 
   return (
     <div className="stack">
@@ -226,20 +271,27 @@ export default function Scan() {
 
       <div className="card">
         <div className="row between">
-          <h2>Results <span className="muted">({results.length})</span></h2>
+          <h2>Results <span className="muted">({visibleResults.length}{handledCount ? ` of ${results.length}` : ''})</span></h2>
           <div className="row">
+            {handledCount > 0 && (
+              <label className="checkbox nowrap" title="Hide results marked applied or not-a-fit">
+                <input type="checkbox" checked={hideHandled} onChange={(e) => setHideHandled(e.target.checked)} />
+                Hide handled ({handledCount})
+              </label>
+            )}
             <button className="link" onClick={loadResults}>refresh</button>
             <button className="link danger" onClick={clearResults} disabled={!results.length}>clear all</button>
           </div>
         </div>
+        <p className="muted small">Results persist across scans. Mark each <strong>Applied</strong> or <strong>Not a fit</strong>, or delete it — they stay until you do.</p>
         <div className="tablewrap">
           <table>
             <thead>
-              <tr><th>Score</th><th>Company</th><th>Role</th><th>Location</th><th>Stack</th><th>Why</th><th></th></tr>
+              <tr><th>Score</th><th>Company</th><th>Role</th><th>Location</th><th>Stack</th><th>Why</th><th>Status</th><th></th></tr>
             </thead>
             <tbody>
-              {results.map((j, i) => (
-                <tr key={j.url || i}>
+              {visibleResults.map((j, i) => (
+                <tr key={j.url || i} className={j.status === 'not_applied' ? 'handled' : ''}>
                   <td><span className={scoreClass(j.score)}>{j.score ?? '—'}</span></td>
                   <td>{j.company}</td>
                   <td>{j.extracted_title || j.title}</td>
@@ -247,12 +299,25 @@ export default function Scan() {
                   <td className="small">{j.stack}</td>
                   <td className="small">{j.reason}</td>
                   <td className="nowrap">
+                    <button
+                      className={j.status === 'applied' ? 'chip on ok' : 'chip'}
+                      onClick={() => setStatus(j, 'applied')}
+                      title="Mark as applied">✓ Applied</button>
+                    <button
+                      className={j.status === 'not_applied' ? 'chip on muted-chip' : 'chip'}
+                      onClick={() => setStatus(j, 'not_applied')}
+                      title="Mark as not a fit">✗ Not a fit</button>
+                  </td>
+                  <td className="nowrap">
                     {j.url && <a className="apply" href={absUrl(j.url)} target="_blank" rel="noopener noreferrer">Apply ↗</a>}
                     <button className="link danger" onClick={() => deleteResult(j)} title="Remove from results">delete</button>
                   </td>
                 </tr>
               ))}
-              {results.length === 0 && <tr><td colSpan={7} className="muted center">No results yet — run a scan.</td></tr>}
+              {results.length === 0 && <tr><td colSpan={8} className="muted center">No results yet — run a scan.</td></tr>}
+              {results.length > 0 && visibleResults.length === 0 && (
+                <tr><td colSpan={8} className="muted center">All results handled — untick “Hide handled” to see them.</td></tr>
+              )}
             </tbody>
           </table>
         </div>

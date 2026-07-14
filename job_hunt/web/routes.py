@@ -424,43 +424,77 @@ def scan_stream() -> StreamingResponse:
 
 # --- results ------------------------------------------------------------------
 
-@router.get("/results")
-def results() -> dict:
-    jobs = _read_json(paths.last_scan_path(), [])
-    jobs = sorted(jobs, key=lambda j: j.get("score", 0), reverse=True)
-    return {"jobs": jobs, "count": len(jobs)}
+_RESULT_STATUSES = ("new", "applied", "not_applied")
 
 
-def _write_last_scan(jobs: list) -> None:
-    path = paths.last_scan_path()
+def _read_results() -> list:
+    """The cumulative, status-carrying results store. Falls back to last_scan.json
+    (seeding status) for installs that haven't run a scan since the upgrade."""
+    path = paths.results_path()
+    if path.exists():
+        data = _read_json(path, [])
+        return data if isinstance(data, list) else []
+    legacy = _read_json(paths.last_scan_path(), [])
+    return [{**j, "status": j.get("status", "new")}
+            for j in (legacy if isinstance(legacy, list) else []) if isinstance(j, dict)]
+
+
+def _write_results(jobs: list) -> None:
+    path = paths.results_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(jobs, indent=2))
 
 
+@router.get("/results")
+def results() -> dict:
+    jobs = _read_results()
+    for j in jobs:
+        j.setdefault("status", "new")
+    jobs = sorted(jobs, key=lambda j: j.get("score", 0), reverse=True)
+    return {"jobs": jobs, "count": len(jobs)}
+
+
+@router.put("/results/status")
+def set_result_status(url: str = Body(..., embed=True),
+                      status: str = Body(..., embed=True)) -> dict:
+    """Mark a result applied / not_applied / new. Results persist across scans
+    until they're marked and (optionally) hidden, or deleted."""
+    if status not in _RESULT_STATUSES:
+        raise HTTPException(400, f"status must be one of {', '.join(_RESULT_STATUSES)}")
+    jobs = _read_results()
+    found = False
+    for j in jobs:
+        if j.get("url") == url:
+            j["status"] = status
+            found = True
+    if not found:
+        raise HTTPException(404, "no result with that URL")
+    _write_results(jobs)
+    return {"url": url, "status": status, "count": len(jobs)}
+
+
 @router.delete("/results")
 def delete_result(url: str = Body(..., embed=True)) -> dict:
-    """Remove a single job (matched by URL) from the saved scan results.
+    """Remove a single job (matched by URL) from the saved results.
 
     The job's URL stays in the seen-jobs memory, so deleting a result you don't
     want doesn't make it re-appear on the next scan. Use Scan → Previously seen
     jobs to un-remember it if you do want it back.
     """
-    jobs = _read_json(paths.last_scan_path(), [])
-    if not isinstance(jobs, list):
-        jobs = []
+    jobs = _read_results()
     kept = [j for j in jobs if j.get("url") != url]
     removed = len(jobs) - len(kept)
     if not removed:
         raise HTTPException(404, "no result with that URL")
-    _write_last_scan(kept)
+    _write_results(kept)
     return {"removed": removed, "count": len(kept)}
 
 
 @router.delete("/results/all")
 def clear_results() -> dict:
-    """Clear all saved scan results (last_scan.json). Job history is left intact."""
-    before = len(_read_json(paths.last_scan_path(), []) or [])
-    _write_last_scan([])
+    """Clear all saved results (results.json). Job history is left intact."""
+    before = len(_read_results())
+    _write_results([])
     return {"removed": before, "count": 0}
 
 

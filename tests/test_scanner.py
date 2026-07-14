@@ -265,6 +265,37 @@ def test_persist_scan_writes_and_dedups(tmp_path, monkeypatch):
     assert {j["url"] for j in json.loads(scanner.JOB_HISTORY_FILE.read_text())} == {"u1", "u2", "u3"}
 
 
+def test_merge_results_accumulates_and_preserves_status(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    scanner._persist_scan([{"url": "u1", "score": 90}, {"url": "u2", "score": 80}])
+    res = json.loads(scanner.RESULTS_FILE.read_text())
+    assert {j["url"] for j in res} == {"u1", "u2"}
+    assert all(j["status"] == "new" for j in res)  # default status
+
+    # user marks u1 applied (as the web layer would)
+    res[0]["status"] = "applied"
+    scanner.RESULTS_FILE.write_text(json.dumps(res))
+
+    # a later scan re-scores u1 and finds a new u3 — u2 must NOT be dropped, and
+    # u1 keeps its "applied" status while its score is refreshed.
+    scanner._persist_scan([{"url": "u1", "score": 95}, {"url": "u3", "score": 70}])
+    res2 = {j["url"]: j for j in json.loads(scanner.RESULTS_FILE.read_text())}
+    assert set(res2) == {"u1", "u2", "u3"}  # previous run's u2 preserved
+    assert res2["u1"]["status"] == "applied" and res2["u1"]["score"] == 95
+    assert res2["u3"]["status"] == "new"
+
+
+def test_merge_results_seeds_from_last_scan_on_upgrade(tmp_path, monkeypatch):
+    # An install with a last_scan.json but no results.json (pre-upgrade) must not
+    # lose that run: the first new scan folds it into the results store.
+    monkeypatch.chdir(tmp_path)
+    scanner.LAST_SCAN_FILE.parent.mkdir(exist_ok=True)
+    scanner.LAST_SCAN_FILE.write_text(json.dumps([{"url": "old", "score": 88}]))
+    scanner._persist_scan([{"url": "fresh", "score": 90}])
+    urls = {j["url"] for j in json.loads(scanner.RESULTS_FILE.read_text())}
+    assert urls == {"old", "fresh"}
+
+
 def test_persist_scan_tolerates_corrupt_history(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     scanner.JOB_HISTORY_FILE.parent.mkdir(exist_ok=True)
