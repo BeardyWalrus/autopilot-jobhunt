@@ -9,6 +9,34 @@ reconstructed from git history.
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-07-14
+
+### Added
+- **Web UI** — a FastAPI + React app to manage everything from a browser
+  (`autopilot web`, or `docker compose up`). Tabs: Settings, Job Boards,
+  Resume, and Scan & Results with a live streamed scan log.
+- **Docker + GHCR** — `Dockerfile.web` / `docker-compose.yml`, and a workflow
+  that publishes a multi-arch image to `ghcr.io/<owner>/autopilot-jobhunt-web`.
+- **Ollama provider** — run models locally, no API key, no rate limits
+  (`llm_provider: "ollama"`). Settings offers a model dropdown populated from
+  the server plus a connection Test button.
+- **Suggest companies from your resume** — new tool across web, MCP
+  (`suggest_companies`), and CLI (`autopilot suggest`).
+- **Review companies for poor fits** — flags tracked companies unlikely to fit,
+  across web, MCP (`review_companies`), and CLI (`autopilot review-companies`).
+- **Disable job boards** without deleting them (`"enabled": false`); disabled
+  boards are skipped on scans and hidden from the UI by default (with a toggle).
+- Live streamed logs for the Suggest/Review jobs, so slow/failed LLM calls are
+  visible instead of a silent spinner.
+
+### Changed
+- Scans now **checkpoint results and seen URLs after every batch of 10** (not
+  just per company), so an interrupted scan re-does at most one batch. Fetch and
+  scoring report per-batch progress at INFO.
+- **Tolerant scoring output parsing** — the scorer accepts a simple `KEY: value`
+  block format (with a JSON fallback), so small local models no longer score
+  nothing on malformed JSON.
+
 ## [0.4.4] — 2026-07-09
 
 ### Added
