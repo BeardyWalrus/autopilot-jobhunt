@@ -43,3 +43,37 @@ def test_suggest_companies_marks_existing(monkeypatch):
     by_name = {s["name"]: s for s in out}
     assert by_name["Cohere"]["exists"] is True
     assert by_name["Hugging Face"]["exists"] is False
+
+
+# --- review_companies ----------------------------------------------------------
+
+REVIEW_OUT = """NAME: Acme Bank
+REASON: finance, not ML
+---
+NAME: Robotics Co
+REASON: hardware-focused
+"""
+
+
+def test_parse_review():
+    recs = suggester._parse_review(REVIEW_OUT)
+    assert [r["name"] for r in recs] == ["Acme Bank", "Robotics Co"]
+    assert recs[0]["reason"] == "finance, not ML"
+
+
+def test_review_companies_flags_by_name(monkeypatch):
+    monkeypatch.setattr(suggester, "chat_with_llm", lambda *a, **k: "NAME: Acme Bank\nREASON: finance")
+    companies = [
+        {"name": "Acme Bank", "search_domain": "acmebank.com"},
+        {"name": "OpenAI", "search_domain": "openai.com"},
+    ]
+    flagged = suggester.review_companies({"candidate": {"name": "Ada"}}, "resume", companies)
+    assert len(flagged) == 1
+    assert flagged[0]["name"] == "Acme Bank" and flagged[0]["index"] == 0
+
+
+def test_review_companies_ignores_unmatched_names(monkeypatch):
+    # Model names a company that isn't in the list — it must be dropped, not crash.
+    monkeypatch.setattr(suggester, "chat_with_llm", lambda *a, **k: "NAME: Ghost Corp\nREASON: n/a")
+    flagged = suggester.review_companies({"candidate": {}}, "r", [{"name": "OpenAI", "search_domain": "openai.com"}])
+    assert flagged == []

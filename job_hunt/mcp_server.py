@@ -26,7 +26,13 @@ except ImportError:
 
 from pydantic import Field
 
-from job_hunt.tools import tool_draft, tool_export, tool_scan, tool_suggest_companies
+from job_hunt.tools import (
+    tool_draft,
+    tool_export,
+    tool_review_companies,
+    tool_scan,
+    tool_suggest_companies,
+)
 
 mcp = FastMCP("autopilot-jobs")
 
@@ -123,6 +129,25 @@ def suggest_companies(
     best guess — review suggestions before adding them to companies.json.
     """
     return tool_suggest_companies(count=count)
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        title="Review companies & flag poor fits",
+        readOnlyHint=True,
+        destructiveHint=False,
+        idempotentHint=False,
+        openWorldHint=True,
+    )
+)
+def review_companies() -> str:
+    """
+    Review the tracked companies (companies.json) against the candidate's resume
+    and flag the ones that look like a poor fit to remove or disable.
+
+    Read-only: reports the flagged companies; it does not modify companies.json.
+    """
+    return tool_review_companies()
 
 
 if __name__ == "__main__":

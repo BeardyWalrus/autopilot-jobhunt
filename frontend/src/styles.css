@@ -108,12 +108,17 @@ td.url { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-spac
 .badge.live { color: var(--ok); background: rgba(52, 199, 123, 0.12); }
 .badge.idle { color: var(--muted); background: var(--panel-2); }
 
-.suggest-btn {
-  display: block; width: 100%; margin: 14px 0 4px; padding: 11px 16px;
-  white-space: nowrap; text-align: center; font-size: 14px;
-  background: rgba(79, 140, 255, 0.1); border-color: var(--accent); color: var(--accent);
+.board-actions { display: flex; gap: 10px; margin: 14px 0 4px; }
+.suggest-btn, .review-btn {
+  flex: 1; padding: 11px 16px; white-space: nowrap; text-align: center; font-size: 14px;
 }
+.suggest-btn { background: rgba(79, 140, 255, 0.1); border-color: var(--accent); color: var(--accent); }
 .suggest-btn:hover:not(:disabled) { background: rgba(79, 140, 255, 0.18); }
+.review-btn { background: rgba(224, 179, 65, 0.1); border-color: var(--mid); color: var(--mid); }
+.review-btn:hover:not(:disabled) { background: rgba(224, 179, 65, 0.18); }
+.suggestions.flagged { border-color: rgba(224, 179, 65, 0.4); }
+
+@media (max-width: 640px) { .board-actions { flex-direction: column; } }
 
 .suggestions { margin-top: 16px; padding: 14px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; }
 .suggestions h3 { margin: 0 0 4px; font-size: 14px; }

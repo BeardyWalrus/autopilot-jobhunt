@@ -6,6 +6,7 @@ Usage:
   autopilot draft #1          — draft application for job #1 from last scan
   autopilot draft https://... — draft application for a specific URL
   autopilot suggest           — suggest companies to scan, based on your resume
+  autopilot review-companies  — flag tracked companies that are a poor fit
   autopilot export            — export last scan to CSV (output/jobs_YYYY-MM-DD.csv)
   autopilot export --min 60   — export only jobs with score >= 60
   autopilot export --days 7   — export jobs from last 7 days (requires scan history)
@@ -292,8 +293,26 @@ def main() -> None:
             if s.get("reason"):
                 print(f"    {s['reason']}")
 
+    elif cmd == "review-companies":
+        from job_hunt.suggester import review_companies
+        resume_path = Path(config.get("candidate", {}).get("resume_path", "resume/YOUR_RESUME.md"))
+        if not resume_path.exists():
+            sys.exit(f"No resume found at {resume_path}. Add your resume first.")
+        resume = resume_path.read_text()
+        companies = load_companies()
+        flagged = review_companies(config, resume, companies)
+        if not flagged:
+            print(f"Reviewed {len(companies)} companies — none flagged as a poor fit.")
+        else:
+            print(f"{len(flagged)} of {len(companies)} companies look like a poor fit:")
+            for f in flagged:
+                print(f"- {f['name']} — {f['reason']}")
+
     else:
-        sys.exit(f"Unknown command: {cmd}\nUse: init | scan | draft | suggest | export | mcp | web")
+        sys.exit(
+            f"Unknown command: {cmd}\n"
+            "Use: init | scan | draft | suggest | review-companies | export | mcp | web"
+        )
 
 
 if __name__ == "__main__":

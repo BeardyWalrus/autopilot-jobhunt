@@ -94,6 +94,29 @@ def test_suggest_endpoint_requires_resume(client):
     assert r.status_code == 400 and "resume" in r.json()["detail"].lower()
 
 
+def test_review_endpoint(client, monkeypatch):
+    c, tmp = client
+    c.put("/api/config", json={"candidate": {"resume_path": "resume/r.md"}})
+    c.put("/api/resume", json={"content": "Senior ML engineer"})
+    c.put("/api/companies", json=[
+        {"name": "Acme Bank", "careers_url": "https://acmebank.com/careers",
+         "search_domain": "acmebank.com", "location": "NY", "region": "NA"}])
+    monkeypatch.setattr(
+        "job_hunt.suggester.review_companies",
+        lambda cfg, resume, companies: [
+            {"index": 0, "name": "Acme Bank", "search_domain": "acmebank.com", "reason": "finance"}],
+    )
+    r = c.post("/api/companies/review")
+    assert r.status_code == 200 and r.json()["count"] == 1
+    assert r.json()["flagged"][0]["name"] == "Acme Bank" and r.json()["reviewed"] == 1
+
+
+def test_review_endpoint_requires_resume(client):
+    c, _ = client
+    r = c.post("/api/companies/review")
+    assert r.status_code == 400 and "resume" in r.json()["detail"].lower()
+
+
 def test_company_enabled_flag_preserved(client):
     c, tmp = client
     base = {"careers_url": "https://x.co/careers", "search_domain": "x.co",
