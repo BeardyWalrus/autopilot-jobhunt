@@ -10,6 +10,7 @@ Usage:
   autopilot export --days 7   — export jobs from last 7 days (requires scan history)
   autopilot export --days 7 --min 60  — combine filters
   autopilot mcp               — run the MCP server over stdio (for Claude Code)
+  autopilot web               — launch the web UI (settings, job boards, resume, scans)
 """
 import csv
 import json
@@ -246,6 +247,13 @@ def main() -> None:
         mcp.run()
         return
 
+    # web launches the FastAPI UI; it reads config per request (and lets you
+    # create it from the settings page), so it must not require config.json here.
+    if cmd == "web":
+        from job_hunt.web.server import run_server
+        run_server(sys.argv[2:])
+        return
+
     # export reads local scan state only — no API keys needed, so skip load_config()
     if cmd == "export":
         min_score, days = _parse_export_args(sys.argv)
@@ -265,7 +273,7 @@ def main() -> None:
         draft_application(config, sys.argv[2])
 
     else:
-        sys.exit(f"Unknown command: {cmd}\nUse: init | scan | draft | export | mcp")
+        sys.exit(f"Unknown command: {cmd}\nUse: init | scan | draft | export | mcp | web")
 
 
 if __name__ == "__main__":
