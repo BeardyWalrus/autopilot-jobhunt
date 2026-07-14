@@ -75,6 +75,7 @@ textarea.mono, .log { font-family: 'SF Mono', Menlo, Consolas, monospace; font-s
 
 .checkbox { display: flex; align-items: center; gap: 8px; color: var(--text); }
 .checkbox input { width: auto; }
+.checkbox.nowrap { white-space: nowrap; flex-shrink: 0; font-size: 13px; color: var(--muted); }
 
 button {
   background: var(--panel-2); border: 1px solid var(--border); color: var(--text);

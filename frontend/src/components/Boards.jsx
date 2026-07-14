@@ -14,6 +14,7 @@ export default function Boards() {
   const [suggesting, setSuggesting] = useState(false)
   const [flagged, setFlagged] = useState(null)
   const [reviewing, setReviewing] = useState(false)
+  const [showDisabled, setShowDisabled] = useState(false)
 
   useEffect(() => {
     api.getCompanies().then((r) => setCompanies(r.companies)).catch((e) => setMsg({ err: e.message }))
@@ -29,9 +30,10 @@ export default function Boards() {
     const needle = q.toLowerCase()
     return companies
       .map((c, i) => ({ c, i }))
+      .filter(({ c }) => showDisabled || c.enabled !== false)  // hide "off" boards by default
       .filter(({ c }) => region === 'all' || c.region === region)
       .filter(({ c }) => !needle || `${c.name} ${c.search_domain} ${c.location}`.toLowerCase().includes(needle))
-  }, [companies, q, region])
+  }, [companies, q, region, showDisabled])
 
   if (!companies) return <div className="card">Loading job boards…</div>
 
@@ -139,6 +141,10 @@ export default function Boards() {
             <select value={region} onChange={(e) => setRegion(e.target.value)}>
               {regions.map((r) => <option key={r} value={r}>{r === 'all' ? 'All regions' : r}</option>)}
             </select>
+            <label className="checkbox nowrap" title="Disabled boards are hidden by default">
+              <input type="checkbox" checked={showDisabled} onChange={(e) => setShowDisabled(e.target.checked)} />
+              Show off ({companies.length - activeCount})
+            </label>
           </div>
         </div>
 
