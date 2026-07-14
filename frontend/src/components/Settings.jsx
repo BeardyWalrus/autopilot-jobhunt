@@ -213,6 +213,17 @@ export default function Settings() {
       </div>
 
       <div className="card">
+        <h2>Diagnostics</h2>
+        <Field label="Scan log level" hint="DEBUG shows per-URL/per-job detail and raw LLM output in the scan log">
+          <select value={cfg.log_level || 'INFO'} onChange={(e) => set('log_level', e.target.value)}>
+            <option value="INFO">INFO — normal progress</option>
+            <option value="DEBUG">DEBUG — verbose (troubleshooting)</option>
+          </select>
+        </Field>
+        <p className="muted small">The full DEBUG log is always written to <span className="mono">scan.log</span> in your project directory, regardless of this setting.</p>
+      </div>
+
+      <div className="card">
         <h2>Telegram (optional)</h2>
         <div className="grid">
           <Field label="Bot token"><input type="password" value={tg.token || ''} onChange={(e) => setTg('token', e.target.value)} /></Field>

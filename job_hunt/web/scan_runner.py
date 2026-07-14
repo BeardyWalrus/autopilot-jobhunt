@@ -26,6 +26,22 @@ from job_hunt.web.paths import project_dir
 _MAX_BUFFER = 2000  # keep the last N log lines for late-joining viewers
 
 
+def _config_log_level() -> str | None:
+    """Read log_level from the project's config.json, if set (INFO / DEBUG / …).
+
+    Lets the Settings page control how verbose the scan log is without an env var.
+    """
+    import json
+
+    from job_hunt.web.paths import config_path
+    try:
+        cfg = json.loads(config_path().read_text())
+        lvl = cfg.get("log_level")
+        return str(lvl).upper() if lvl else None
+    except (OSError, json.JSONDecodeError, AttributeError):
+        return None
+
+
 def _subprocess_env() -> dict:
     """Env for the scan child: make job_hunt importable regardless of cwd.
 
@@ -39,6 +55,12 @@ def _subprocess_env() -> dict:
     env = os.environ.copy()
     existing = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = pkg_parent + (os.pathsep + existing if existing else "")
+    # config.json's log_level drives the child's console verbosity (env wins if
+    # the user already exported LOG_LEVEL explicitly).
+    if "LOG_LEVEL" not in env:
+        level = _config_log_level()
+        if level:
+            env["LOG_LEVEL"] = level
     return env
 
 

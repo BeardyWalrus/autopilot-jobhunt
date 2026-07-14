@@ -6,11 +6,13 @@ export default function Scan() {
   const [lines, setLines] = useState([])
   const [results, setResults] = useState([])
   const [msg, setMsg] = useState(null)
+  const [seen, setSeen] = useState(null)
   const logRef = useRef(null)
   const esRef = useRef(null)
 
   useEffect(() => {
     loadResults()
+    loadSeen()
     // Reconnect to a scan on mount so switching tabs doesn't lose it. If one is
     // running we reopen the live stream; if one finished while we were away, we
     // restore its log (the runner keeps the buffer) instead of showing "idle".
@@ -34,6 +36,26 @@ export default function Scan() {
     api.results().then((r) => setResults(r.jobs)).catch(() => {})
   }
 
+  function loadSeen() {
+    api.scanSeen().then((r) => setSeen(r.seen)).catch(() => {})
+  }
+
+  async function forget() {
+    if (!window.confirm(
+      'Forget the scanner\'s memory of already-seen jobs?\n\n' +
+      'The next scan will re-discover and re-score every job. Your saved results ' +
+      'are kept — only the "already seen, skip it" list is cleared.',
+    )) return
+    setMsg(null)
+    try {
+      const r = await api.scanForget()
+      setSeen(r.seen)
+      setMsg({ ok: `Cleared ${r.forgotten} remembered job(s). The next scan starts fresh.` })
+    } catch (e) {
+      setMsg({ err: e.message })
+    }
+  }
+
   function openStream() {
     esRef.current?.close()
     setLines([])
@@ -44,6 +66,7 @@ export default function Scan() {
       es.close()
       setRunning(false)
       loadResults()
+      loadSeen()
     })
     es.onerror = () => { es.close(); setRunning(false) }
   }
@@ -73,6 +96,13 @@ export default function Scan() {
         <div className="row between">
           <h2>Scan</h2>
           <div className="row">
+            {!running && seen != null && (
+              <button className="nowrap" onClick={forget} disabled={!seen}
+                title={seen ? 'Clear the seen-jobs memory so the next scan redoes everything'
+                            : 'Nothing to forget yet'}>
+                Forget scanned history{seen ? ` (${seen})` : ''}
+              </button>
+            )}
             {running
               ? <button className="danger" onClick={stop}>Stop</button>
               : <button className="primary" onClick={start}>Scan now</button>}
@@ -80,6 +110,7 @@ export default function Scan() {
           </div>
         </div>
         {msg?.err && <p className="err">{msg.err}</p>}
+        {msg?.ok && <p className="ok">{msg.ok}</p>}
         <pre className="log" ref={logRef}>
           {lines.length ? lines.join('\n') : 'No scan output yet. Hit “Scan now”.'}
         </pre>

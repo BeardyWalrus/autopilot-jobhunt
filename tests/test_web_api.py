@@ -313,6 +313,23 @@ def test_scan_start_ok_and_conflict(client, monkeypatch):
     assert c.post("/api/scan/start").status_code == 409
 
 
+def test_scan_seen_and_forget(client):
+    c, tmp = client
+    (tmp / "state" / "seen_jobs.json").write_text(json.dumps({"seen_urls": ["a", "b", "c"]}))
+    assert c.get("/api/scan/seen").json()["seen"] == 3
+    r = c.post("/api/scan/forget")
+    assert r.status_code == 200 and r.json() == {"forgotten": 3, "seen": 0}
+    assert c.get("/api/scan/seen").json()["seen"] == 0
+    # File is left present but emptied.
+    assert json.loads((tmp / "state" / "seen_jobs.json").read_text()) == {"seen_urls": []}
+
+
+def test_scan_forget_conflict_while_running(client, monkeypatch):
+    c, _ = client
+    monkeypatch.setattr(type(runner), "running", property(lambda self: True))
+    assert c.post("/api/scan/forget").status_code == 409
+
+
 # --- results ------------------------------------------------------------------
 
 def test_results_sorted_by_score(client):

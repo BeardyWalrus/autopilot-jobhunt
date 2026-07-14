@@ -48,6 +48,8 @@ export const api = {
   scanStart: () => req('/scan/start', { method: 'POST' }),
   scanStop: () => req('/scan/stop', { method: 'POST' }),
   scanLogs: () => req('/scan/logs?limit=2000'),
+  scanSeen: () => req('/scan/seen'),
+  scanForget: () => req('/scan/forget', { method: 'POST' }),
 
   results: () => req('/results'),
 

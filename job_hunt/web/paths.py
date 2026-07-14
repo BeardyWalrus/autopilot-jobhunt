@@ -29,6 +29,10 @@ def job_history_path() -> Path:
     return project_dir() / "state" / "job_history.json"
 
 
+def seen_jobs_path() -> Path:
+    return project_dir() / "state" / "seen_jobs.json"
+
+
 def default_resume_path() -> Path:
     return project_dir() / "resume" / "YOUR_RESUME.md"
 

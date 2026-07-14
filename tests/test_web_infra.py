@@ -1,4 +1,5 @@
 """Web infra: scheduler, server launcher, SPA serving, scan-runner internals."""
+import json
 import sys
 import types
 
@@ -85,3 +86,21 @@ def test_scan_runner_idle_emit_subscribe():
     q = r.subscribe()  # replays buffer
     assert q.get_nowait() == "line one" and q.get_nowait() == "line two"
     r.unsubscribe(q)
+
+
+def test_subprocess_env_injects_log_level(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("AUTOPILOT_HOME", raising=False)
+    monkeypatch.delenv("LOG_LEVEL", raising=False)
+    (tmp_path / "config.json").write_text(json.dumps({"log_level": "debug"}))
+    env = scan_runner._subprocess_env()
+    assert env["LOG_LEVEL"] == "DEBUG"  # read from config.json, upper-cased
+
+
+def test_subprocess_env_respects_explicit_log_level(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("AUTOPILOT_HOME", raising=False)
+    monkeypatch.setenv("LOG_LEVEL", "WARNING")
+    (tmp_path / "config.json").write_text(json.dumps({"log_level": "DEBUG"}))
+    env = scan_runner._subprocess_env()
+    assert env["LOG_LEVEL"] == "WARNING"  # an explicit env var wins over config

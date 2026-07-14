@@ -6,6 +6,9 @@ import pytest
 
 from job_hunt import scanner
 
+# Captured before any fixture stubs it, so tests can restore the genuine scorer.
+_REAL_SCORE_JOBS = scanner.score_jobs
+
 
 @pytest.fixture(autouse=True)
 def _no_sleep(monkeypatch):
@@ -95,9 +98,21 @@ def test_score_jobs_parses_and_filters(monkeypatch):
     assert len(out) == 1 and out[0]["score"] == 90 and out[0]["extracted_title"] == "ML Engineer"
 
 
-def test_score_jobs_no_json(monkeypatch):
+def test_score_jobs_no_json_raises(monkeypatch, caplog):
+    # Unparseable output must raise (so the caller preserves the jobs unscored)
+    # and log the raw output at ERROR level so it's debuggable from the scan log.
     monkeypatch.setattr(scanner, "chat_with_llm", lambda *a, **k: "sorry no json")
-    assert scanner.score_jobs([{"company": "A", "location": "L", "title": "T", "url": "u"}], "r", {}) == []
+    with pytest.raises(scanner.ScoringError):
+        scanner.score_jobs([{"company": "A", "location": "L", "title": "T", "url": "u"}], "r", {})
+    assert "sorry no json" in caplog.text
+
+
+def test_score_jobs_empty_output_hints(monkeypatch, caplog):
+    # A near-empty response gets a targeted "the model returned almost nothing" hint.
+    monkeypatch.setattr(scanner, "chat_with_llm", lambda *a, **k: "  \n")
+    with pytest.raises(scanner.ScoringError):
+        scanner.score_jobs([{"company": "A", "location": "L", "title": "T", "url": "u"}], "r", {})
+    assert "returned almost nothing" in caplog.text
 
 
 def test_score_jobs_llm_raises(monkeypatch):
@@ -105,7 +120,8 @@ def test_score_jobs_llm_raises(monkeypatch):
         raise RuntimeError("llm down")
 
     monkeypatch.setattr(scanner, "chat_with_llm", boom)
-    assert scanner.score_jobs([{"company": "A", "location": "L", "title": "T", "url": "u"}], "r", {}) == []
+    with pytest.raises(scanner.ScoringError):
+        scanner.score_jobs([{"company": "A", "location": "L", "title": "T", "url": "u"}], "r", {})
 
 
 # --- tolerant output parsing ---------------------------------------------------
@@ -385,6 +401,20 @@ def test_run_scan_with_telegram(scan_setup, monkeypatch):
     cfg["telegram"] = {"token": "t", "chat_id": "c"}
     scanner.run_scan(cfg, companies)
     assert sent and "matches" in sent[0]
+
+
+def test_run_scan_parse_failure_preserves_jobs_unscored(scan_setup, monkeypatch):
+    # A parse failure (real LLM output that can't be parsed) must NOT silently
+    # drop the batch: the jobs are saved unscored so they aren't lost forever.
+    cfg, companies = scan_setup
+    # scan_setup stubs score_jobs; here we want the real one, fed unparseable output.
+    monkeypatch.setattr(scanner, "score_jobs", _REAL_SCORE_JOBS)
+    monkeypatch.setattr(scanner, "chat_with_llm", lambda *a, **k: "the model said no")
+    monkeypatch.setattr(scanner, "send_telegram", lambda *a: True)
+    scanner.run_scan(cfg, companies)
+    saved = json.loads(scanner.LAST_SCAN_FILE.read_text())
+    assert saved and saved[0]["company"] == "Acme"  # preserved unscored, not dropped
+    assert "score" not in saved[0]  # saved without a score
 
 
 def test_run_scan_scoring_failure_fallback(scan_setup, monkeypatch):
