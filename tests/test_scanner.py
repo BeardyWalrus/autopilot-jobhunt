@@ -108,6 +108,67 @@ def test_score_jobs_llm_raises(monkeypatch):
     assert scanner.score_jobs([{"company": "A", "location": "L", "title": "T", "url": "u"}], "r", {}) == []
 
 
+# --- tolerant output parsing ---------------------------------------------------
+
+BLOCK_OUTPUT = """Sure! Here are the results:
+
+JOB: 1
+SCORE: 90
+TITLE: ML Engineer
+STACK: Python, PyTorch
+LOCATION: Remote (EU)
+WORTH: yes
+REASON: strong LLM match
+---
+JOB: 2
+SCORE: 20
+TITLE: Frontend Dev
+WORTH: no
+REASON: not ML
+"""
+
+
+def test_parse_block_format():
+    recs = scanner._parse_scored_output(BLOCK_OUTPUT)
+    assert len(recs) == 2
+    assert recs[0]["score"] == 90 and recs[0]["title"] == "ML Engineer"
+    assert recs[0]["worth_applying"] is True and recs[1]["worth_applying"] is False
+    assert recs[0]["location_remote"] == "Remote (EU)"
+
+
+def test_parse_json_still_works():
+    raw = json.dumps([{"job_number": 1, "score": 77, "title": "MLE", "worth_applying": True}])
+    recs = scanner._parse_scored_output("prefix " + raw)
+    assert len(recs) == 1 and recs[0]["score"] == 77 and recs[0]["worth_applying"] is True
+
+
+def test_parse_tolerates_messy_values():
+    # scores with units, '=' separators, alias keys, code fences
+    raw = "```\nRole = Staff MLE\nrating: 82/100\nApply = yes\nwhy: fits\n```"
+    recs = scanner._parse_scored_output(raw)
+    assert len(recs) == 1
+    assert recs[0]["score"] == 82 and recs[0]["title"] == "Staff MLE"
+    assert recs[0]["worth_applying"] is True and recs[0]["reason"] == "fits"
+
+
+def test_score_jobs_block_format(monkeypatch):
+    jobs = [{"company": "Acme", "location": "Remote", "title": "MLE", "url": "u1"},
+            {"company": "Beta", "location": "NY", "title": "SWE", "url": "u2"}]
+    monkeypatch.setattr(scanner, "chat_with_llm", lambda *a, **k: BLOCK_OUTPUT)
+    out = scanner.score_jobs(jobs, "resume", {"candidate": {"min_score": 55}})
+    assert len(out) == 1 and out[0]["score"] == 90 and out[0]["extracted_title"] == "ML Engineer"
+    assert out[0]["location_remote"] == "Remote (EU)"
+
+
+def test_score_jobs_missing_worth_falls_back_to_threshold(monkeypatch):
+    # No WORTH line at all; score 88 >= min_score 55 -> still surfaced.
+    raw = "JOB: 1\nSCORE: 88\nTITLE: MLE\nREASON: fits"
+    monkeypatch.setattr(scanner, "chat_with_llm", lambda *a, **k: raw)
+    out = scanner.score_jobs([{"company": "A", "location": "L", "title": "T", "url": "u"}],
+                             "r", {"candidate": {"min_score": 55}})
+    assert len(out) == 1 and out[0]["score"] == 88
+
+
 # --- discover / fetch (fake TinyFish) -----------------------------------------
 
 def _fake_tf(links=None, search_urls=None, contents=None):

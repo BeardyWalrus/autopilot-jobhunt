@@ -48,7 +48,7 @@ def build_search_query(domain: str, candidate: dict) -> str:
     keywords = candidate.get("search_keywords") or DEFAULT_SEARCH_KEYWORDS
     return f'site:{domain} ({seniority}) ({keywords})'
 
-SCORE_PROMPT = """You are evaluating job postings for a candidate. Output ONLY a JSON array, no other text.
+SCORE_PROMPT = """You are evaluating job postings for a candidate.
 
 CANDIDATE:
 {candidate_profile}
@@ -59,20 +59,22 @@ RESUME SUMMARY:
 JOBS TO SCORE:
 {jobs_text}
 
-For each job output:
-{{
-  "job_number": 1,
-  "score": 0-100,
-  "title": "extracted job title",
-  "stack": "key tech from JD (comma-separated, max 6 items)",
-  "location_remote": "location + remote policy",
-  "reason": "one sentence why this fits or doesn't fit the candidate",
-  "worth_applying": true/false
-}}
+For EACH job, output one block in EXACTLY this format. Separate blocks with a
+line containing only three dashes (---). Do not add anything else — no preamble,
+no explanations, no markdown.
+
+JOB: 1
+SCORE: 0-100
+TITLE: extracted job title
+STACK: key tech from the posting, comma-separated, max 6 items
+LOCATION: location + remote policy
+WORTH: yes or no
+REASON: one sentence on why it fits or doesn't fit the candidate
+---
 
 Scoring: 80-100 near-perfect; 60-79 good fit; 40-59 partial; <40 poor.
-Set worth_applying=true only if score >= {min_score}.
-Include ALL jobs. Output ONLY the JSON array."""
+Set WORTH to yes only if SCORE is at least {min_score}.
+Score every job in the list."""
 
 EXPORT_FIELDS = [
     "Company", "Role", "Location", "Application URL",
@@ -254,6 +256,111 @@ def fetch_job_details(tf: TinyFish, jobs: list[dict], label: str = "") -> list[d
     return jobs
 
 
+# Map the many key spellings a model might emit onto our canonical field names.
+_FIELD_ALIASES = {
+    "job": "job_number", "job_number": "job_number", "number": "job_number", "num": "job_number",
+    "score": "score", "rating": "score",
+    "title": "title", "role": "title", "position": "title",
+    "stack": "stack", "tech": "stack", "technologies": "stack", "skills": "stack",
+    "location": "location_remote", "location_remote": "location_remote",
+    "remote": "location_remote", "remote_policy": "location_remote",
+    "worth": "worth_applying", "worth_applying": "worth_applying", "apply": "worth_applying",
+    "reason": "reason", "why": "reason", "notes": "reason",
+}
+_TRUTHY = {"yes", "true", "y", "1", "worth applying", "apply", "worth"}
+_KV_RE = re.compile(r"^\s*([A-Za-z_#][A-Za-z_ ]*?)\s*[:=]\s*(.*)$")
+
+
+def _coerce_int(val: object, default: int = 0) -> int:
+    m = re.search(r"-?\d+", str(val))
+    return int(m.group()) if m else default
+
+
+def _coerce_bool(val: object) -> bool:
+    return str(val).strip().lower() in _TRUTHY
+
+
+def _normalize_record(rec: dict, fallback_number: int) -> dict:
+    """Coerce one raw record into our canonical schema.
+
+    worth_applying is left as None when the model didn't say — the caller then
+    derives it from score vs. min_score, so a model that scores well but forgets
+    the WORTH line still surfaces the job.
+    """
+    worth = rec.get("worth_applying")
+    return {
+        "job_number": _coerce_int(rec.get("job_number", fallback_number), fallback_number),
+        "score": max(0, min(100, _coerce_int(rec.get("score", 0)))),
+        "title": (str(rec.get("title", "")).strip() or "?"),
+        "stack": str(rec.get("stack", "")).strip(),
+        "location_remote": str(rec.get("location_remote", "")).strip(),
+        "worth_applying": (_coerce_bool(worth) if worth is not None else None),
+        "reason": str(rec.get("reason", "")).strip(),
+    }
+
+
+def _parse_block_format(raw: str) -> list[dict]:
+    """Parse the documented `KEY: value` block format, tolerantly.
+
+    Unknown lines are ignored; a `---` (or blank-run) separator or a fresh `JOB:`
+    line starts a new record. Case-insensitive keys, `:` or `=` accepted.
+    """
+    records: list[dict] = []
+    cur: dict = {}
+
+    def flush() -> None:
+        if cur:
+            records.append(_normalize_record(cur, len(records) + 1))
+            cur.clear()
+
+    for line in raw.splitlines():
+        s = line.strip()
+        if not s:
+            continue
+        if set(s) <= {"-", "=", "*", "_"} and len(s) >= 3:  # separator rule
+            flush()
+            continue
+        m = _KV_RE.match(s)
+        if not m:
+            continue
+        raw_key = m.group(1).strip().lower().lstrip("#").strip()
+        key = _FIELD_ALIASES.get(raw_key)
+        if key is None:
+            continue
+        if key == "job_number" and ("job_number" in cur or "score" in cur):
+            flush()  # a new JOB: line begins the next record
+        cur[key] = m.group(2).strip()
+    flush()
+    return records
+
+
+def _parse_scored_output(raw: str) -> list[dict]:
+    """Turn the scorer's raw output into normalized records.
+
+    Tolerant by design so weak local models (e.g. small Ollama models) don't
+    silently score nothing: tries a JSON array first (strong models emit one
+    even when asked for blocks), then falls back to the `KEY: value` block format.
+    """
+    start, end = raw.find("["), raw.rfind("]")
+    if start != -1 and end > start:
+        try:
+            data = json.loads(raw[start:end + 1])
+            if isinstance(data, list) and data:
+                recs = []
+                for i, d in enumerate(data, 1):
+                    if isinstance(d, dict):
+                        aliased = {
+                            _FIELD_ALIASES.get(str(k).strip().lower(), str(k).strip().lower()): v
+                            for k, v in d.items()
+                        }
+                        recs.append(_normalize_record(aliased, i))
+                if recs:
+                    return recs
+        except Exception:
+            pass
+    return _parse_block_format(raw)
+
+
 def score_jobs(jobs: list[dict], resume: str, config: dict) -> list[dict]:
     if not jobs:
         return []
@@ -283,35 +390,40 @@ def score_jobs(jobs: list[dict], resume: str, config: dict) -> list[dict]:
             messages=[{"role": "user", "content": prompt}],
             temperature=0.1,
         )
-        elapsed = time.time() - t0
-        start, end = raw.find("["), raw.rfind("]") + 1
-        if start == -1:
-            logger.error("  LLM returned no JSON array")
-            return []
-        scored = json.loads(raw[start:end])
-        logger.debug(f"  LLM scoring complete in {elapsed:.1f}s — {len(scored)} results parsed")
     except Exception as e:
         logger.error(f"  Scoring error: {e}")
         return []
+    elapsed = time.time() - t0
+
+    scored = _parse_scored_output(raw)
+    if not scored:
+        logger.error(f"  Could not parse any scored jobs from LLM output ({len(raw)} chars)")
+        logger.debug(f"  Raw output began: {raw[:400]!r}")
+        return []
+    logger.debug(f"  LLM scoring complete in {elapsed:.1f}s — {len(scored)} results parsed")
 
     results = []
     for item in scored:
-        score = item.get("score", 0)
-        title = item.get("title", "?")
-        reason = item.get("reason", "")
-        worth = item.get("worth_applying", False)
+        score = item["score"]
+        title = item["title"]
+        reason = item["reason"]
+        # If the model didn't explicitly mark worth, fall back to the threshold —
+        # a good score with a missing/garbled WORTH line still surfaces the job.
+        worth = item["worth_applying"]
+        if worth is None:
+            worth = score >= min_score
         logger.debug(f"    [{score:3d}] {title} — {reason[:80]}")
         if not worth:
             continue
-        idx = item.get("job_number", 0) - 1
+        idx = item["job_number"] - 1
         if 0 <= idx < len(jobs):
             job = jobs[idx].copy()
             job.update(
                 {
                     "score": score,
                     "extracted_title": title,
-                    "stack": item.get("stack", ""),
-                    "location_remote": item.get("location_remote", job["location"]),
+                    "stack": item["stack"],
+                    "location_remote": item["location_remote"] or job["location"],
                     "reason": reason,
                 }
             )
