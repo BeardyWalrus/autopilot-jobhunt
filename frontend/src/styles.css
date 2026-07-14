@@ -28,11 +28,12 @@ a:hover { text-decoration: underline; }
 .app { max-width: 1100px; margin: 0 auto; padding: 0 16px 60px; }
 
 .topbar {
-  display: flex; align-items: center; gap: 20px;
+  display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
   padding: 16px 0; margin-bottom: 20px;
   border-bottom: 1px solid var(--border);
   position: sticky; top: 0; background: var(--bg); z-index: 10;
 }
+.tabs { min-width: 0; }
 .brand { font-weight: 700; font-size: 16px; }
 .brand .logo { color: var(--accent); margin-right: 4px; }
 .muted { color: var(--muted); }
@@ -130,7 +131,29 @@ td.nowrap a + button { margin-left: 10px; }
 .joblog-wrap { margin-top: 12px; }
 .joblog { height: 160px; margin-top: 4px; }
 
-@media (max-width: 640px) { .board-actions { flex-direction: column; } }
+@media (max-width: 680px) {
+  .app { padding: 0 12px 48px; }
+
+  /* Topbar: brand + version share the first row; tabs get their own
+     full-width, horizontally-scrollable row instead of overflowing the page. */
+  .topbar { gap: 10px 12px; padding: 12px 0; margin-bottom: 16px; }
+  .health { order: 2; margin-left: auto; }
+  .tabs { order: 3; width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .tab { flex: 0 0 auto; white-space: nowrap; }
+
+  .card { padding: 14px; }
+
+  /* Header rows (title + controls) stack instead of cramming onto one line. */
+  .row.between { flex-direction: column; align-items: stretch; }
+
+  /* Control clusters wrap, and inputs/selects grow to fill the row rather than
+     being clipped to a sliver. */
+  .card .row { flex-wrap: wrap; }
+  .card .row > input,
+  .card .row > select { flex: 1 1 140px; width: auto; }
+
+  .board-actions { flex-direction: column; }
+}
 
 .suggestions { margin-top: 16px; padding: 14px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; }
 .suggestions h3 { margin: 0 0 4px; font-size: 14px; }

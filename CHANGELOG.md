@@ -9,6 +9,16 @@ reconstructed from git history.
 
 ## [Unreleased]
 
+## [0.12.1] — 2026-07-14
+
+### Fixed
+- **Mobile layout.** The top bar no longer overflows the screen (it wrapped the
+  brand, four tabs, and version onto one row, forcing the whole page to scroll
+  sideways) — the tabs now sit on their own horizontally-scrollable row. Card
+  header rows (title + search/filter/actions) stack instead of cramming, and
+  inputs/selects fill the width rather than being clipped to a sliver. Verified
+  at 390px with zero horizontal page overflow.
+
 ## [0.12.0] — 2026-07-14
 
 ### Added
