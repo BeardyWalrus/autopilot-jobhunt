@@ -126,7 +126,7 @@ claude mcp add autopilot-jobhunt \
 # Then add "cwd": "/path/to/autopilot-jobhunt" in ~/.claude.json
 ```
 
-MCP tools exposed: `scan_jobs`, `draft_application(job_ref)`, `export_jobs(min_score, days)`, `suggest_companies(count)`
+MCP tools exposed: `scan_jobs`, `draft_application(job_ref)`, `export_jobs(min_score, days)`, `suggest_companies(count)`, `review_companies()`
 
 ## State files (gitignored)
 

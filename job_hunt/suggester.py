@@ -134,3 +134,93 @@ def suggest_companies(
         )
     logger.info(f"Parsed {len(suggestions)} company suggestions")
     return suggestions
+
+
+REVIEW_PROMPT = """You are reviewing a candidate's list of companies they scan for jobs.
+Identify companies that are a POOR FIT — unlikely to have roles matching this
+candidate's profile and resume — that they should remove or disable.
+
+CANDIDATE PROFILE:
+{profile}
+
+RESUME:
+{resume}
+
+COMPANIES:
+{companies_text}
+
+For EACH poor-fit company, output one block, separated by a line of three dashes (---):
+
+NAME: exact company name from the list above
+REASON: one sentence on why it's a poor fit for this candidate
+
+List ONLY poor-fit companies. If a company is a plausible fit, leave it out.
+Output nothing else."""
+
+
+def _parse_review(raw: str) -> list[dict]:
+    records: list[dict] = []
+    cur: dict = {}
+
+    def flush() -> None:
+        name = (cur.get("name") or "").strip()
+        if name:
+            records.append({"name": name, "reason": (cur.get("reason") or "").strip()})
+        cur.clear()
+
+    for line in raw.splitlines():
+        s = line.strip()
+        if not s:
+            continue
+        if set(s) <= {"-", "="} and len(s) >= 3:
+            flush()
+            continue
+        m = _KV_RE.match(s)
+        if not m:
+            continue
+        key = _ALIASES.get(m.group(1).strip().lower())
+        if key not in ("name", "reason"):
+            continue
+        if key == "name" and "name" in cur:
+            flush()
+        cur[key] = m.group(2).strip()
+    flush()
+    return records
+
+
+def review_companies(
+    config: dict, resume: str, companies: list[dict], batch_size: int = 50
+) -> list[dict]:
+    """Flag poor-fit companies to disable/remove.
+
+    Returns a list of {index, name, search_domain, reason} — index is the
+    position in `companies`, so the caller can disable or remove precisely.
+    Reviews in batches so large lists stay within a small model's context.
+    """
+    profile = _build_candidate_profile(config)
+    flagged: list[dict] = []
+    for start in range(0, len(companies), batch_size):
+        batch = companies[start:start + batch_size]
+        companies_text = "\n".join(
+            f"{i + 1}. {c.get('name', '?')} — {c.get('search_domain', '')} "
+            f"— {c.get('location', '')} — {c.get('region', '')}"
+            for i, c in enumerate(batch)
+        )
+        prompt = REVIEW_PROMPT.format(
+            profile=profile, resume=resume[:2500], companies_text=companies_text
+        )
+        logger.info(f"Reviewing companies {start + 1}-{start + len(batch)} of {len(companies)}...")
+        raw = chat_with_llm(config, messages=[{"role": "user", "content": prompt}], temperature=0.2)
+        by_name = {c.get("name", "").strip().lower(): j for j, c in enumerate(batch)}
+        for rec in _parse_review(raw):
+            j = by_name.get(rec["name"].strip().lower())
+            if j is not None:
+                c = batch[j]
+                flagged.append({
+                    "index": start + j,
+                    "name": c.get("name", ""),
+                    "search_domain": c.get("search_domain", ""),
+                    "reason": rec["reason"],
+                })
+    logger.info(f"Flagged {len(flagged)} poor-fit companies")
+    return flagged

@@ -128,6 +128,25 @@ def suggest(count: int = Body(8, embed=True)) -> dict:
     return {"suggestions": suggestions, "count": len(suggestions)}
 
 
+@router.post("/companies/review")
+def review() -> dict:
+    from job_hunt.suggester import review_companies
+
+    cfg = _read_json(paths.config_path(), {})
+    rpath = paths.resume_path(cfg)
+    resume = rpath.read_text(encoding="utf-8") if rpath.exists() else ""
+    if not resume.strip():
+        raise HTTPException(400, "No resume found — add one on the Resume tab first.")
+    companies = _read_json(paths.companies_path(), [])
+    if not companies:
+        return {"flagged": [], "count": 0, "reviewed": 0}
+    try:
+        flagged = review_companies(cfg, resume, companies)
+    except Exception as e:
+        raise HTTPException(502, f"Review failed: {e}")
+    return {"flagged": flagged, "count": len(flagged), "reviewed": len(companies)}
+
+
 @router.delete("/companies/{index}")
 def delete_company(index: int) -> dict:
     companies = _read_json(paths.companies_path(), [])

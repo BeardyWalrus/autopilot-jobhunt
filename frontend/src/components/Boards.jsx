@@ -12,6 +12,8 @@ export default function Boards() {
   const [dirty, setDirty] = useState(false)
   const [suggestions, setSuggestions] = useState(null)
   const [suggesting, setSuggesting] = useState(false)
+  const [flagged, setFlagged] = useState(null)
+  const [reviewing, setReviewing] = useState(false)
 
   useEffect(() => {
     api.getCompanies().then((r) => setCompanies(r.companies)).catch((e) => setMsg({ err: e.message }))
@@ -91,6 +93,42 @@ export default function Boards() {
     setSuggestions(suggestions.filter((x) => x !== s))
   }
 
+  async function review() {
+    setReviewing(true)
+    setMsg(null)
+    try {
+      const r = await api.reviewCompanies()
+      setFlagged(r.flagged)
+      if (!r.flagged.length) setMsg({ ok: `Reviewed ${r.reviewed} companies — none look like a poor fit.` })
+    } catch (e) {
+      setMsg({ err: e.message })
+    } finally {
+      setReviewing(false)
+    }
+  }
+
+  function findIdx(f) {
+    return companies.findIndex(
+      (c) => (f.search_domain && c.search_domain === f.search_domain) || c.name === f.name,
+    )
+  }
+
+  function disableFlagged(f) {
+    const idx = findIdx(f)
+    if (idx < 0) return
+    setCompanies(companies.map((c, i) => (i === idx ? { ...c, enabled: false } : c)))
+    setDirty(true)
+    setFlagged(flagged.filter((x) => x !== f))
+  }
+
+  function removeFlagged(f) {
+    const idx = findIdx(f)
+    if (idx < 0) return
+    setCompanies(companies.filter((_, i) => i !== idx))
+    setDirty(true)
+    setFlagged(flagged.filter((x) => x !== f))
+  }
+
   return (
     <div className="stack">
       <div className="card">
@@ -104,9 +142,35 @@ export default function Boards() {
           </div>
         </div>
 
-        <button className="suggest-btn" onClick={suggest} disabled={suggesting}>
-          {suggesting ? 'Analysing your résumé…' : '✨  Suggest companies from my résumé'}
-        </button>
+        <div className="board-actions">
+          <button className="suggest-btn" onClick={suggest} disabled={suggesting}>
+            {suggesting ? 'Analysing your résumé…' : '✨  Suggest companies from my résumé'}
+          </button>
+          <button className="review-btn" onClick={review} disabled={reviewing}>
+            {reviewing ? 'Reviewing your list…' : '🧹  Review my list for poor fits'}
+          </button>
+        </div>
+
+        {flagged && flagged.length > 0 && (
+          <div className="suggestions flagged">
+            <div className="row between">
+              <h3>Poor-fit companies <span className="muted small">— disable to keep for later, or remove</span></h3>
+              <button className="link" onClick={() => setFlagged(null)}>dismiss</button>
+            </div>
+            {flagged.map((f, i) => (
+              <div className="suggestion" key={i}>
+                <div className="sug-main">
+                  <div><strong>{f.name}</strong> <span className="muted small">{f.search_domain}</span></div>
+                  {f.reason && <div className="muted small">{f.reason}</div>}
+                </div>
+                <div className="row">
+                  <button onClick={() => disableFlagged(f)}>Disable</button>
+                  <button className="danger" onClick={() => removeFlagged(f)}>Remove</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {suggestions && suggestions.length > 0 && (
           <div className="suggestions">

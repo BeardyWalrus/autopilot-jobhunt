@@ -10,7 +10,7 @@ from pathlib import Path
 from job_hunt.drafter import draft_application
 from job_hunt.main import export_jobs, load_companies, load_config
 from job_hunt.scanner import run_scan
-from job_hunt.suggester import suggest_companies
+from job_hunt.suggester import review_companies, suggest_companies
 
 
 def tool_scan(config_path: str = "config.json", companies_path: str = "companies.json") -> str:
@@ -84,6 +84,33 @@ def tool_suggest_companies(count: int = 8, config_path: str = "config.json") -> 
             lines.append(f"    {s['careers_url'] or s['search_domain']}")
             if s.get("reason"):
                 lines.append(f"    {s['reason']}")
+        return "\n".join(lines)
+    finally:
+        os.chdir(old_cwd)
+
+
+def tool_review_companies(config_path: str = "config.json") -> str:
+    """
+    Review the tracked companies against the resume and flag poor-fit ones to
+    remove or disable. Returns a human-readable list of flagged companies.
+    """
+    import os
+    old_cwd = Path.cwd()
+    project_root = Path(config_path).parent.resolve()
+    os.chdir(project_root)
+    try:
+        config = load_config()
+        resume_path = Path(config.get("candidate", {}).get("resume_path", "resume/YOUR_RESUME.md"))
+        if not resume_path.exists():
+            return f"No resume found at {resume_path}. Add your resume first."
+        resume = resume_path.read_text(encoding="utf-8")
+        companies = load_companies()
+        flagged = review_companies(config, resume, companies)
+        if not flagged:
+            return f"Reviewed {len(companies)} companies — none flagged as a poor fit."
+        lines = [f"{len(flagged)} of {len(companies)} companies look like a poor fit:", ""]
+        for f in flagged:
+            lines.append(f"- {f['name']} — {f['reason']}")
         return "\n".join(lines)
     finally:
         os.chdir(old_cwd)
