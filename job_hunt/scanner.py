@@ -50,6 +50,10 @@ JOB_HISTORY_FILE = Path("state/job_history.json")
 # across runs and keeps each job until it's marked applied/not-a-fit or deleted.
 RESULTS_FILE = Path("state/results.json")
 RESULT_STATUSES = ("new", "applied", "not_applied")
+# Jobs whose LLM scoring failed (parse error / model down) wait here to be retried
+# on the next scan (or on demand) instead of being dropped or saved unscored.
+RESCORE_FILE = Path("state/rescore_queue.json")
+MAX_RESCORE_ATTEMPTS = 3
 
 JOB_URL_RE = re.compile(
     r"/(job|jobs|opening|openings|position|positions|vacancy|vacancies|role|roles|apply)"
@@ -598,6 +602,23 @@ def _merge_results(all_scored_jobs: list[dict]) -> None:
     RESULTS_FILE.write_text(json.dumps(ordered, indent=2))
 
 
+def _append_history(jobs: list[dict]) -> int:
+    """Append genuinely-new rows (by URL) to job_history.json. Returns new rows."""
+    history: list[dict] = []
+    if JOB_HISTORY_FILE.exists():
+        try:
+            history = json.loads(JOB_HISTORY_FILE.read_text())
+        except Exception:
+            history = []
+    existing_urls = {j["url"] for j in history if isinstance(j, dict) and j.get("url")}
+    new_entries = [j for j in jobs if j.get("url") and j["url"] not in existing_urls]
+    if new_entries:
+        history.extend(new_entries)
+        JOB_HISTORY_FILE.parent.mkdir(exist_ok=True)
+        JOB_HISTORY_FILE.write_text(json.dumps(history, indent=2))
+    return len(new_entries)
+
+
 def _persist_scan(all_scored_jobs: list[dict]) -> int:
     """Write last_scan.json, merge into results.json, and append to job_history.json.
 
@@ -610,19 +631,88 @@ def _persist_scan(all_scored_jobs: list[dict]) -> int:
     # run after an upgrade can still recover the previous run from last_scan.json.
     _merge_results(all_scored_jobs)
     LAST_SCAN_FILE.write_text(json.dumps(all_scored_jobs, indent=2))
+    return _append_history(all_scored_jobs)
 
-    history: list[dict] = []
-    if JOB_HISTORY_FILE.exists():
+
+# --- rescore queue -------------------------------------------------------------
+
+def _load_rescore_queue() -> list[dict]:
+    if RESCORE_FILE.exists():
         try:
-            history = json.loads(JOB_HISTORY_FILE.read_text())
+            data = json.loads(RESCORE_FILE.read_text())
+            return data if isinstance(data, list) else []
         except Exception:
-            history = []
-    existing_urls = {j["url"] for j in history}
-    new_entries = [j for j in all_scored_jobs if j["url"] not in existing_urls]
-    if new_entries:
-        history.extend(new_entries)
-        JOB_HISTORY_FILE.write_text(json.dumps(history, indent=2))
-    return len(new_entries)
+            return []
+    return []
+
+
+def _save_rescore_queue(jobs: list[dict]) -> None:
+    RESCORE_FILE.parent.mkdir(exist_ok=True)
+    RESCORE_FILE.write_text(json.dumps(jobs, indent=2))
+
+
+def _enqueue_rescore(jobs: list[dict]) -> None:
+    """Queue jobs whose scoring failed, deduped by URL. Keeps the enriched job
+    dict (with fetched content) so the retry has everything it needs. Existing
+    queued entries — and their attempt counts — are preserved."""
+    queue = _load_rescore_queue()
+    by_url = {j.get("url"): j for j in queue if isinstance(j, dict) and j.get("url")}
+    for job in jobs:
+        url = job.get("url")
+        if not url or url in by_url:
+            continue
+        by_url[url] = {**job, "_rescore_attempts": int(job.get("_rescore_attempts", 0))}
+    _save_rescore_queue(list(by_url.values()))
+
+
+def rescore_queued(config: dict, resume: str, on_token=None) -> dict:
+    """Retry scoring the queued jobs. Successfully-scored jobs are merged into the
+    results/history store and dropped from the queue; jobs that fail
+    MAX_RESCORE_ATTEMPTS times are saved unscored (so they're never lost) and also
+    dropped. Returns {"attempted", "recovered", "gave_up", "remaining"}.
+    """
+    queue = _load_rescore_queue()
+    if not queue:
+        return {"attempted": 0, "recovered": 0, "gave_up": 0, "remaining": 0}
+
+    batch_size = _score_batch_size(config)
+    scan_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    recovered: list[dict] = []
+    still_queued: list[dict] = []
+    gave_up: list[dict] = []
+    logger.info(f"Rescoring {len(queue)} queued job(s) in batches of {batch_size}...")
+
+    for i in range(0, len(queue), batch_size):
+        batch = queue[i:i + batch_size]
+        try:
+            scored = score_jobs(batch, resume, config)
+            for j in scored:
+                j["scan_date"] = scan_date
+            recovered.extend(scored)  # a successful call clears the whole batch
+            logger.info(f"  Rescored {len(batch)} job(s) — {len(scored)} matched")
+        except Exception as e:
+            logger.warning(f"  Rescore batch still failing ({e})")
+            for job in batch:
+                attempts = int(job.get("_rescore_attempts", 0)) + 1
+                job["_rescore_attempts"] = attempts
+                (gave_up if attempts >= MAX_RESCORE_ATTEMPTS else still_queued).append(job)
+
+    def _clean(j: dict) -> dict:
+        return {k: v for k, v in j.items() if k != "_rescore_attempts"}
+
+    to_persist = [_clean(j) for j in recovered] + [_clean(j) for j in gave_up]
+    if to_persist:
+        _merge_results(to_persist)
+        _append_history(to_persist)
+    _save_rescore_queue(still_queued)
+
+    if gave_up:
+        logger.warning(
+            f"  Gave up on {len(gave_up)} job(s) after {MAX_RESCORE_ATTEMPTS} attempts — saved unscored"
+        )
+    logger.info(f"Rescore complete — recovered {len(recovered)}, still queued {len(still_queued)}")
+    return {"attempted": len(queue), "recovered": len(recovered),
+            "gave_up": len(gave_up), "remaining": len(still_queued)}
 
 
 def run_scan(config: dict, companies: list[dict]) -> None:
@@ -664,6 +754,18 @@ def run_scan(config: dict, companies: list[dict]) -> None:
     state = load_state()
     seen_urls: set = set(state.get("seen_urls", []))
     logger.info(f"State loaded — {len(seen_urls)} previously seen URLs")
+
+    # Retry any jobs whose scoring failed on a previous run before scanning anew.
+    if _load_rescore_queue():
+        try:
+            summary = rescore_queued(config, resume)
+            if summary["recovered"] or summary["remaining"]:
+                logger.info(
+                    f"Rescore queue: recovered {summary['recovered']}, "
+                    f"still queued {summary['remaining']}"
+                )
+        except Exception as e:
+            logger.warning(f"Rescore pass failed, leaving queue for next time: {e}")
 
     scan_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     all_scored_jobs: list[dict] = []
@@ -713,9 +815,13 @@ def run_scan(config: dict, companies: list[dict]) -> None:
                 try:
                     batch_scored = score_jobs(batch, resume, config)
                 except Exception as score_err:
-                    logger.error(f"{lbl}: scoring failed ({score_err}) — saving unscored")
-                    errors.append(f"⚠️ Scoring failed for {company['name']} batch {batch_num}: {score_err}")
-                    batch_scored = batch
+                    logger.error(f"{lbl}: scoring failed ({score_err}) — queued for rescoring")
+                    errors.append(
+                        f"⚠️ Scoring failed for {company['name']} batch {batch_num} "
+                        f"({score_err}) — queued to rescore"
+                    )
+                    _enqueue_rescore(batch)
+                    batch_scored = []
 
                 if batch_scored:
                     for job in batch_scored:

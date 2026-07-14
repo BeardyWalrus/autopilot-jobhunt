@@ -9,6 +9,14 @@ reconstructed from git history.
 
 ## [Unreleased]
 
+### Added
+- **Rescore queue for failed scoring.** When a batch's LLM scoring fails (parse
+  error, model down, quota), those jobs are now queued in `state/rescore_queue.json`
+  instead of being saved unscored. The queue is **retried automatically at the start
+  of the next scan**, on demand via **`autopilot rescore`**, or from a **Rescore now**
+  banner on the Scan tab (`GET`/`POST /api/rescore`). Jobs that keep failing after 3
+  attempts are saved unscored so they're never lost.
+
 ## [0.13.0] — 2026-07-14
 
 ### Added

@@ -122,6 +122,12 @@ a.apply:hover { background: rgba(79, 140, 255, 0.22); text-decoration: none; }
 .chip.on.muted-chip { background: var(--panel-2); border-color: var(--muted); color: var(--text); }
 tr.handled { opacity: 0.5; }
 
+.rescore-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  flex-wrap: wrap; margin: 6px 0 12px; padding: 10px 14px; border-radius: 10px;
+  background: rgba(224, 179, 65, 0.1); border: 1px solid var(--mid); color: var(--text);
+}
+
 .log {
   background: #0b0e12; border: 1px solid var(--border); border-radius: 8px;
   padding: 12px; height: 320px; overflow: auto; white-space: pre-wrap; margin: 0;

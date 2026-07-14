@@ -13,6 +13,8 @@ export default function Scan() {
   const [seenDirty, setSeenDirty] = useState(false)
   const [seenSaving, setSeenSaving] = useState(false)
   const [hideHandled, setHideHandled] = useState(false)
+  const [rescoreQueued, setRescoreQueued] = useState(0)
+  const [rescoring, setRescoring] = useState(false)
   const logRef = useRef(null)
   const esRef = useRef(null)
   const pollRef = useRef(null)
@@ -20,6 +22,7 @@ export default function Scan() {
   useEffect(() => {
     loadResults()
     loadSeen()
+    loadRescore()
     // Reconnect to a scan on mount so switching tabs doesn't lose it. If one is
     // running we reopen the live stream; if one finished while we were away, we
     // restore its log (the runner keeps the buffer) instead of showing "idle".
@@ -41,6 +44,25 @@ export default function Scan() {
 
   function loadResults() {
     api.results().then((r) => setResults(r.jobs)).catch(() => {})
+  }
+
+  function loadRescore() {
+    api.rescoreStatus().then((r) => setRescoreQueued(r.queued)).catch(() => {})
+  }
+
+  async function rescoreNow() {
+    setMsg(null)
+    setRescoring(true)
+    try {
+      const r = await api.rescoreRun()
+      setMsg({ ok: `Rescored — recovered ${r.recovered}, still queued ${r.remaining}${r.gave_up ? `, gave up on ${r.gave_up}` : ''}.` })
+      loadResults()
+      loadRescore()
+    } catch (e) {
+      setMsg({ err: e.message })
+    } finally {
+      setRescoring(false)
+    }
   }
 
   async function deleteResult(job) {
@@ -133,6 +155,7 @@ export default function Scan() {
     api.scanLogs().then((r) => setLines(r.lines || [])).catch(() => {})
     loadResults()
     loadSeen()
+    loadRescore()
   }
 
   function openStream() {
@@ -283,6 +306,14 @@ export default function Scan() {
             <button className="link danger" onClick={clearResults} disabled={!results.length}>clear all</button>
           </div>
         </div>
+        {rescoreQueued > 0 && (
+          <div className="rescore-banner">
+            <span>⚠ {rescoreQueued} job(s) failed to score and are queued — they’ll retry automatically on the next scan.</span>
+            <button className="nowrap" onClick={rescoreNow} disabled={rescoring || running}>
+              {rescoring ? 'Rescoring…' : 'Rescore now'}
+            </button>
+          </div>
+        )}
         <p className="muted small">Results persist across scans. Mark each <strong>Applied</strong> or <strong>Not a fit</strong>, or delete it — they stay until you do.</p>
         <div className="tablewrap">
           <table>

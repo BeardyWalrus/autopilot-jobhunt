@@ -457,21 +457,22 @@ def test_run_scan_with_telegram(scan_setup, monkeypatch):
     assert sent and "matches" in sent[0]
 
 
-def test_run_scan_parse_failure_preserves_jobs_unscored(scan_setup, monkeypatch):
+def test_run_scan_parse_failure_queues_for_rescore(scan_setup, monkeypatch):
     # A parse failure (real LLM output that can't be parsed) must NOT silently
-    # drop the batch: the jobs are saved unscored so they aren't lost forever.
+    # drop the batch: the jobs go to the rescore queue to be retried, not into
+    # results as unscored noise.
     cfg, companies = scan_setup
     # scan_setup stubs score_jobs; here we want the real one, fed unparseable output.
     monkeypatch.setattr(scanner, "score_jobs", _REAL_SCORE_JOBS)
     monkeypatch.setattr(scanner, "chat_with_llm", lambda *a, **k: "the model said no")
     monkeypatch.setattr(scanner, "send_telegram", lambda *a: True)
     scanner.run_scan(cfg, companies)
-    saved = json.loads(scanner.LAST_SCAN_FILE.read_text())
-    assert saved and saved[0]["company"] == "Acme"  # preserved unscored, not dropped
-    assert "score" not in saved[0]  # saved without a score
+    assert json.loads(scanner.LAST_SCAN_FILE.read_text()) == []  # nothing saved unscored
+    queued = json.loads(scanner.RESCORE_FILE.read_text())
+    assert queued and queued[0]["company"] == "Acme"  # queued to rescore instead
 
 
-def test_run_scan_scoring_failure_fallback(scan_setup, monkeypatch):
+def test_run_scan_scoring_failure_queues_for_rescore(scan_setup, monkeypatch):
     def boom(*a, **k):
         raise RuntimeError("score boom")
 
@@ -479,5 +480,50 @@ def test_run_scan_scoring_failure_fallback(scan_setup, monkeypatch):
     monkeypatch.setattr(scanner, "send_telegram", lambda *a: True)
     cfg, companies = scan_setup
     scanner.run_scan(cfg, companies)
-    saved = json.loads(scanner.LAST_SCAN_FILE.read_text())
-    assert saved  # unscored fallback saved
+    assert json.loads(scanner.LAST_SCAN_FILE.read_text()) == []
+    assert len(json.loads(scanner.RESCORE_FILE.read_text())) == 1  # queued
+
+
+def test_rescore_queued_recovers_and_gives_up(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    cfg = {"candidate": {"min_score": 55}}
+    scanner._save_rescore_queue([
+        {"url": "u1", "company": "Acme", "location": "L", "title": "MLE"},
+        {"url": "u2", "company": "Beta", "location": "L", "title": "SWE", "_rescore_attempts": 2},
+    ])
+    # u1 scores fine; u2's batch keeps failing (already at 2 attempts -> gives up).
+    def fake_score(batch, resume, config):
+        if any(j["url"] == "u2" for j in batch):
+            raise scanner.ScoringError("still broken")
+        return [{**batch[0], "score": 88, "extracted_title": "MLE", "reason": "fit", "stack": "Py"}]
+    monkeypatch.setattr(scanner, "score_jobs", fake_score)
+    monkeypatch.setattr(scanner, "_score_batch_size", lambda c: 1)  # one job per batch
+
+    summary = scanner.rescore_queued(cfg, "resume")
+    assert summary == {"attempted": 2, "recovered": 1, "gave_up": 1, "remaining": 0}
+    # u1 recovered into results with its score; u2 saved unscored; queue emptied.
+    results = {j["url"]: j for j in json.loads(scanner.RESULTS_FILE.read_text())}
+    assert results["u1"]["score"] == 88 and "_rescore_attempts" not in results["u1"]
+    assert results["u2"] and "score" not in results["u2"]
+    assert json.loads(scanner.RESCORE_FILE.read_text()) == []
+
+
+def test_rescore_queued_requeues_below_attempt_cap(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    scanner._save_rescore_queue([{"url": "u1", "company": "A", "location": "L", "title": "T"}])
+    monkeypatch.setattr(scanner, "score_jobs",
+                        lambda *a, **k: (_ for _ in ()).throw(scanner.ScoringError("nope")))
+    summary = scanner.rescore_queued({"candidate": {}}, "r")
+    assert summary["remaining"] == 1 and summary["recovered"] == 0
+    q = json.loads(scanner.RESCORE_FILE.read_text())
+    assert q[0]["_rescore_attempts"] == 1  # requeued with an incremented attempt count
+
+
+def test_enqueue_rescore_dedups_and_keeps_attempts(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    scanner._enqueue_rescore([{"url": "u1", "title": "a"}])
+    scanner._save_rescore_queue([{**json.loads(scanner.RESCORE_FILE.read_text())[0], "_rescore_attempts": 2}])
+    scanner._enqueue_rescore([{"url": "u1", "title": "a"}, {"url": "u2", "title": "b"}])
+    q = {j["url"]: j for j in json.loads(scanner.RESCORE_FILE.read_text())}
+    assert set(q) == {"u1", "u2"}
+    assert q["u1"]["_rescore_attempts"] == 2  # existing entry (and its count) preserved
