@@ -9,12 +9,36 @@ export default function Settings() {
   const [health, setHealth] = useState(null)
   const [msg, setMsg] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [ollamaModels, setOllamaModels] = useState([])
+  const [ollamaStatus, setOllamaStatus] = useState(null)
+  const [testingOllama, setTestingOllama] = useState(false)
 
   useEffect(() => {
-    api.getConfig().then((r) => setCfg(r.config)).catch((e) => setMsg({ err: e.message }))
+    api.getConfig().then((r) => {
+      setCfg(r.config)
+      // Auto-populate the Ollama model list if that's the active provider.
+      if (r.config.llm_provider === 'ollama') testOllama(r.config.ollama_base_url, true)
+    }).catch((e) => setMsg({ err: e.message }))
     api.getSchedule().then((s) => setSched({ enabled: s.enabled, time: s.time })).catch(() => {})
     api.health().then(setHealth).catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  async function testOllama(baseUrl, silent = false) {
+    setTestingOllama(true)
+    if (!silent) setOllamaStatus(null)
+    try {
+      const r = await api.testOllama(baseUrl || '')
+      setOllamaModels(r.models || [])
+      setOllamaStatus(r.ok
+        ? { ok: `Connected — ${r.models.length} model${r.models.length === 1 ? '' : 's'} available` }
+        : { err: r.error })
+    } catch (e) {
+      setOllamaStatus({ err: e.message })
+    } finally {
+      setTestingOllama(false)
+    }
+  }
 
   if (!cfg) return <div className="card">Loading settings…</div>
 
@@ -39,6 +63,7 @@ export default function Settings() {
   }
 
   const provider = cfg.llm_provider || 'openrouter'
+  const ollamaOptions = Array.from(new Set([...ollamaModels, cfg.ollama_model].filter(Boolean)))
 
   return (
     <div className="stack">
@@ -71,8 +96,24 @@ export default function Settings() {
           )}
           {provider === 'ollama' && (
             <>
-              <Field label="Ollama model" hint="e.g. gemma4:e4b, qwen2.5:7b"><input value={cfg.ollama_model || ''} onChange={(e) => set('ollama_model', e.target.value)} /></Field>
-              <Field label="Ollama base URL"><input value={cfg.ollama_base_url || ''} onChange={(e) => set('ollama_base_url', e.target.value)} placeholder="http://localhost:11434/v1" /></Field>
+              <Field label="Ollama model" hint="installed models — Test to refresh">
+                <select value={cfg.ollama_model || ''} onChange={(e) => set('ollama_model', e.target.value)}>
+                  {!cfg.ollama_model && (
+                    <option value="">{ollamaModels.length ? '— select a model —' : '— Test to list models —'}</option>
+                  )}
+                  {ollamaOptions.map((m) => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </Field>
+              <Field label="Ollama base URL">
+                <div className="row">
+                  <input value={cfg.ollama_base_url || ''} onChange={(e) => set('ollama_base_url', e.target.value)} placeholder="http://localhost:11434/v1" />
+                  <button type="button" className="nowrap" onClick={() => testOllama(cfg.ollama_base_url)} disabled={testingOllama}>
+                    {testingOllama ? 'Testing…' : 'Test'}
+                  </button>
+                </div>
+                {ollamaStatus?.ok && <span className="ok small">✓ {ollamaStatus.ok}</span>}
+                {ollamaStatus?.err && <span className="err small">✗ {ollamaStatus.err}</span>}
+              </Field>
             </>
           )}
           {provider === 'anthropic' && (
