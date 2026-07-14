@@ -1,6 +1,7 @@
 # autopilot-jobhunt web UI.
 #
-#   docker compose up --build
+#   docker compose up --build        # build locally from source
+#   docker compose pull && up -d     # or pull the prebuilt image from GHCR
 #   open http://127.0.0.1:8000
 #
 # Project files (config.json, companies.json, resume/, state/, output/) live in
@@ -11,10 +12,12 @@
 # access instead, change the mapping to "127.0.0.1:8000:8000".
 services:
   web:
+    # Pushed to GHCR by .github/workflows/docker-publish.yml. `up --build` builds
+    # this same tag locally; without --build, compose pulls it from GHCR.
+    image: ghcr.io/beardywalrus/autopilot-jobhunt-web:latest
     build:
       context: .
       dockerfile: Dockerfile.web
-    image: autopilot-jobhunt-web
     container_name: autopilot-jobhunt-web
     ports:
       - "8000:8000"
