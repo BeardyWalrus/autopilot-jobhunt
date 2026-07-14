@@ -16,8 +16,8 @@ if the primary hits its daily free quota, the next is tried automatically:
 | 3 | `google/gemma-4-31b-it:free` | fallback 2 |
 | 4 | `qwen/qwen3-coder:free` | fallback 3 |
 
-- **Calls per scan:** ~5–15 (jobs scored in batches of 10). One nightly scan stays
-  within all four models' free daily limits.
+- **Calls per scan:** ~10–30 (jobs scored in small batches — default 5, set
+  `score_batch_size`). One nightly scan stays within all four models' free daily limits.
 - **`All LLM models failed`:** every model hit its daily quota — wait for the midnight
   UTC reset, or add a small OpenRouter credit ($1–5) to remove the cap.
 - Override the chain in `config.json` with `openrouter_model` and

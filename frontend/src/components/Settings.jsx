@@ -322,13 +322,23 @@ export default function Settings() {
 
       <div className="card">
         <h2>Diagnostics</h2>
-        <Field label="Scan log level" hint="DEBUG shows per-URL/per-job detail and raw LLM output in the scan log">
-          <select value={cfg.log_level || 'INFO'} onChange={(e) => set('log_level', e.target.value)}>
-            <option value="INFO">INFO — normal progress</option>
-            <option value="DEBUG">DEBUG — verbose (troubleshooting)</option>
-          </select>
-        </Field>
-        <p className="muted small">The full DEBUG log is always written to <span className="mono">scan.log</span> in your project directory, regardless of this setting.</p>
+        <div className="grid">
+          <Field label="Scan log level" hint="DEBUG shows per-URL/per-job detail and raw LLM output in the scan log">
+            <select value={cfg.log_level || 'INFO'} onChange={(e) => set('log_level', e.target.value)}>
+              <option value="INFO">INFO — normal progress</option>
+              <option value="DEBUG">DEBUG — verbose (troubleshooting)</option>
+            </select>
+          </Field>
+          <Field label="Jobs scored per batch" hint="lower this if the LLM returns unparseable output — 1–20, default 5">
+            <input type="number" min={1} max={20}
+              value={cfg.score_batch_size ?? 5}
+              onChange={(e) => set('score_batch_size', Math.max(1, Math.min(20, Number(e.target.value) || 5)))} />
+          </Field>
+        </div>
+        <p className="muted small">
+          The full DEBUG log is always written to <span className="mono">scan.log</span> in your project directory, regardless of the level.
+          Smaller batches give the model a shorter prompt to score, which small/local models format more reliably (at the cost of more LLM calls).
+        </p>
       </div>
 
       <div className="card">
