@@ -61,7 +61,7 @@ autopilot-jobhunt uses a 4-model fallback chain — all free:
 
 If the primary model hits its daily free quota, the tool automatically tries the next one — no action needed from you.
 
-A nightly scan uses approximately **5–15 LLM calls** (jobs are scored in batches of 10). Running once per day via cron is comfortably within free tier limits for all four models.
+A nightly scan uses approximately **10–30 LLM calls** (jobs are scored in small batches — default 5, set `score_batch_size` to change). Running once per day via cron is comfortably within free tier limits for all four models.
 
 > [!TIP]
 > Check current per-model free limits at [openrouter.ai/models](https://openrouter.ai/models).

@@ -341,7 +341,7 @@ In `config.json`:
 "anthropic_model": "claude-haiku-4-5-20251001"
 ```
 
-`claude-haiku-4-5-20251001` is fast and cheap; `claude-sonnet-4-6` gives higher quality scores. A nightly scan uses ~5–15 LLM calls total (jobs scored in batches of 10).
+`claude-haiku-4-5-20251001` is fast and cheap; `claude-sonnet-4-6` gives higher quality scores. A nightly scan uses roughly ~10–30 LLM calls total (jobs scored in small batches — default 5, set `score_batch_size` to change).
 
 ---
 
