@@ -351,6 +351,33 @@ def test_run_scan_no_telegram_writes_csv(scan_setup, monkeypatch):
     assert list(Path("output").glob("jobs_*.csv"))
 
 
+def test_telegram_configured_helper():
+    assert scanner._telegram_configured({"token": "t", "chat_id": "c"})
+    # unset / partial
+    assert not scanner._telegram_configured({})
+    assert not scanner._telegram_configured({"token": "t"})
+    assert not scanner._telegram_configured({"token": "t", "chat_id": ""})
+    assert not scanner._telegram_configured({"token": "  ", "chat_id": "c"})
+    # shipped placeholders must count as unconfigured
+    assert not scanner._telegram_configured(
+        {"token": "YOUR_TELEGRAM_BOT_TOKEN", "chat_id": "YOUR_TELEGRAM_CHAT_ID"}
+    )
+    assert not scanner._telegram_configured(
+        {"token": "your_token_here", "chat_id": "12345"}
+    )
+
+
+def test_run_scan_placeholder_telegram_not_sent(scan_setup, monkeypatch):
+    sent = []
+    monkeypatch.setattr(scanner, "send_telegram", lambda *a: sent.append(a) or True)
+    cfg, companies = scan_setup
+    cfg["telegram"] = {"token": "YOUR_TELEGRAM_BOT_TOKEN", "chat_id": "YOUR_TELEGRAM_CHAT_ID"}
+    scanner.run_scan(cfg, companies)
+    assert not sent  # placeholders → treated as unconfigured, nothing sent
+    from pathlib import Path
+    assert list(Path("output").glob("jobs_*.csv"))
+
+
 def test_run_scan_with_telegram(scan_setup, monkeypatch):
     sent = []
     monkeypatch.setattr(scanner, "send_telegram", lambda tok, chat, msg: sent.append(msg) or True)
