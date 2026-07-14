@@ -108,6 +108,12 @@ td.url { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-spac
 .badge.live { color: var(--ok); background: rgba(52, 199, 123, 0.12); }
 .badge.idle { color: var(--muted); background: var(--panel-2); }
 
+.suggestions { margin-top: 16px; padding: 14px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; }
+.suggestions h3 { margin: 0 0 4px; font-size: 14px; }
+.suggestion { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.suggestion:last-child { border-bottom: 0; }
+.sug-main { min-width: 0; }
+
 tr.disabled { opacity: 0.4; }
 tr.disabled td { text-decoration: line-through; }
 tr.disabled td:first-child { text-decoration: none; }

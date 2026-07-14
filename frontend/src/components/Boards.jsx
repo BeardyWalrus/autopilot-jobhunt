@@ -10,6 +10,8 @@ export default function Boards() {
   const [draft, setDraft] = useState(BLANK)
   const [msg, setMsg] = useState(null)
   const [dirty, setDirty] = useState(false)
+  const [suggestions, setSuggestions] = useState(null)
+  const [suggesting, setSuggesting] = useState(false)
 
   useEffect(() => {
     api.getCompanies().then((r) => setCompanies(r.companies)).catch((e) => setMsg({ err: e.message }))
@@ -66,18 +68,63 @@ export default function Boards() {
     }
   }
 
+  async function suggest() {
+    setSuggesting(true)
+    setMsg(null)
+    try {
+      const r = await api.suggestCompanies(8)
+      setSuggestions(r.suggestions)
+      if (!r.suggestions.length) setMsg({ err: 'No suggestions came back — try again.' })
+    } catch (e) {
+      setMsg({ err: e.message })
+    } finally {
+      setSuggesting(false)
+    }
+  }
+
+  function addSuggestion(s) {
+    setCompanies([...companies, {
+      name: s.name, careers_url: s.careers_url, search_domain: s.search_domain,
+      location: s.location, region: s.region,
+    }])
+    setDirty(true)
+    setSuggestions(suggestions.filter((x) => x !== s))
+  }
+
   return (
     <div className="stack">
       <div className="card">
         <div className="row between">
           <h2>Job boards <span className="muted">({activeCount} on / {companies.length})</span></h2>
           <div className="row">
+            <button onClick={suggest} disabled={suggesting}>{suggesting ? 'Thinking…' : '✨ Suggest from résumé'}</button>
             <input placeholder="Search name / domain / location" value={q} onChange={(e) => setQ(e.target.value)} />
             <select value={region} onChange={(e) => setRegion(e.target.value)}>
               {regions.map((r) => <option key={r} value={r}>{r === 'all' ? 'All regions' : r}</option>)}
             </select>
           </div>
         </div>
+
+        {suggestions && suggestions.length > 0 && (
+          <div className="suggestions">
+            <div className="row between">
+              <h3>Suggested for you <span className="muted small">— best-guess URLs, review before saving</span></h3>
+              <button className="link" onClick={() => setSuggestions(null)}>dismiss</button>
+            </div>
+            {suggestions.map((s, i) => (
+              <div className="suggestion" key={i}>
+                <div className="sug-main">
+                  <div><strong>{s.name}</strong> <span className="muted small">{s.region} · {s.location}</span></div>
+                  <div className="url small"><a href={s.careers_url} target="_blank" rel="noreferrer">{s.careers_url || s.search_domain}</a></div>
+                  {s.reason && <div className="muted small">{s.reason}</div>}
+                </div>
+                {s.exists
+                  ? <span className="muted small">already tracked</span>
+                  : <button onClick={() => addSuggestion(s)}>Add</button>}
+              </div>
+            ))}
+          </div>
+        )}
 
         <div className="tablewrap">
           <table>

@@ -5,6 +5,7 @@ Usage:
   autopilot scan              — run daily job scan
   autopilot draft #1          — draft application for job #1 from last scan
   autopilot draft https://... — draft application for a specific URL
+  autopilot suggest           — suggest companies to scan, based on your resume
   autopilot export            — export last scan to CSV (output/jobs_YYYY-MM-DD.csv)
   autopilot export --min 60   — export only jobs with score >= 60
   autopilot export --days 7   — export jobs from last 7 days (requires scan history)
@@ -272,8 +273,27 @@ def main() -> None:
         from job_hunt.drafter import draft_application
         draft_application(config, sys.argv[2])
 
+    elif cmd == "suggest":
+        from job_hunt.suggester import suggest_companies
+        count = 8
+        if len(sys.argv) > 2:
+            try:
+                count = int(sys.argv[2])
+            except ValueError:
+                sys.exit("Usage: autopilot suggest [count]")
+        resume_path = Path(config.get("candidate", {}).get("resume_path", "resume/YOUR_RESUME.md"))
+        if not resume_path.exists():
+            sys.exit(f"No resume found at {resume_path}. Add your resume first.")
+        resume = resume_path.read_text()
+        for s in suggest_companies(config, resume, load_companies(), count):
+            tag = " [already tracked]" if s.get("exists") else ""
+            print(f"- {s['name']} ({s['region']}, {s['location']}){tag}")
+            print(f"    {s['careers_url'] or s['search_domain']}")
+            if s.get("reason"):
+                print(f"    {s['reason']}")
+
     else:
-        sys.exit(f"Unknown command: {cmd}\nUse: init | scan | draft | export | mcp | web")
+        sys.exit(f"Unknown command: {cmd}\nUse: init | scan | draft | suggest | export | mcp | web")
 
 
 if __name__ == "__main__":

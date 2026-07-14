@@ -25,6 +25,8 @@ export const api = {
   getCompanies: () => req('/companies'),
   putCompanies: (companies) => req('/companies', { method: 'PUT', body: JSON.stringify(companies) }),
   addCompany: (company) => req('/companies', { method: 'POST', body: JSON.stringify(company) }),
+  suggestCompanies: (count = 8) =>
+    req('/companies/suggest', { method: 'POST', body: JSON.stringify({ count }) }),
 
   getResume: () => req('/resume'),
   putResume: (content) => req('/resume', { method: 'PUT', body: JSON.stringify({ content }) }),

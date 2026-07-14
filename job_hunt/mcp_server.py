@@ -26,7 +26,7 @@ except ImportError:
 
 from pydantic import Field
 
-from job_hunt.tools import tool_draft, tool_export, tool_scan
+from job_hunt.tools import tool_draft, tool_export, tool_scan, tool_suggest_companies
 
 mcp = FastMCP("autopilot-jobs")
 
@@ -100,6 +100,29 @@ def export_jobs(
     Returns a summary of the export.
     """
     return tool_export(min_score=min_score, days=days)
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        title="Suggest companies from resume",
+        readOnlyHint=True,
+        destructiveHint=False,
+        idempotentHint=False,
+        openWorldHint=True,
+    )
+)
+def suggest_companies(
+    count: Annotated[
+        int, Field(description="How many companies to suggest (1-20).")
+    ] = 8,
+) -> str:
+    """
+    Suggest real companies to scan, based on the candidate's resume and profile.
+
+    Reads config.json and resume from the working directory. Careers URLs are a
+    best guess — review suggestions before adding them to companies.json.
+    """
+    return tool_suggest_companies(count=count)
 
 
 if __name__ == "__main__":
