@@ -98,6 +98,8 @@ button.link.danger { color: var(--err); }
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
 th { color: var(--muted); font-weight: 600; font-size: 12px; }
+th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+th.sortable:hover { color: var(--text); }
 td.url { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .log {

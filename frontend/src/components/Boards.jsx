@@ -13,6 +13,7 @@ export default function Boards() {
   const [suggestions, setSuggestions] = useState(null)
   const [flagged, setFlagged] = useState(null)
   const [showDisabled, setShowDisabled] = useState(false)
+  const [sort, setSort] = useState({ key: null, dir: 'asc' })
   const [jobLog, setJobLog] = useState(null)
   const [jobRunning, setJobRunning] = useState(false)
   const esRef = useRef(null)
@@ -37,16 +38,31 @@ export default function Boards() {
   const filtered = useMemo(() => {
     if (!companies) return []
     const needle = q.toLowerCase()
-    return companies
+    const rows = companies
       .map((c, i) => ({ c, i }))
       .filter(({ c }) => showDisabled || c.enabled !== false)  // hide "off" boards by default
       .filter(({ c }) => region === 'all' || c.region === region)
       .filter(({ c }) => !needle || `${c.name} ${c.search_domain} ${c.location}`.toLowerCase().includes(needle))
-  }, [companies, q, region, showDisabled])
+    if (!sort.key) return rows  // no column chosen -> companies.json order
+    const val = ({ c }) => (sort.key === 'enabled' ? (c.enabled !== false ? 1 : 0) : (c[sort.key] || '').toLowerCase())
+    const dir = sort.dir === 'desc' ? -1 : 1
+    return [...rows].sort((a, b) => {
+      const va = val(a), vb = val(b)
+      return va < vb ? -dir : va > vb ? dir : 0
+    })
+  }, [companies, q, region, showDisabled, sort])
 
   if (!companies) return <div className="card">Loading job boards…</div>
 
   const activeCount = companies.filter((c) => c.enabled !== false).length
+
+  function toggleSort(key) {
+    setSort((s) =>
+      s.key !== key ? { key, dir: 'asc' } : s.dir === 'asc' ? { key, dir: 'desc' } : { key: null, dir: 'asc' },
+    )
+  }
+
+  const arrow = (key) => (sort.key === key ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : '')
 
   function removeAt(idx) {
     setCompanies(companies.filter((_, i) => i !== idx))
@@ -257,7 +273,15 @@ export default function Boards() {
         <div className="tablewrap">
           <table>
             <thead>
-              <tr><th>On</th><th>Company</th><th>Careers URL</th><th>Search domain</th><th>Location</th><th>Region</th><th></th></tr>
+              <tr>
+                <th className="sortable" onClick={() => toggleSort('enabled')}>On{arrow('enabled')}</th>
+                <th className="sortable" onClick={() => toggleSort('name')}>Company{arrow('name')}</th>
+                <th className="sortable" onClick={() => toggleSort('careers_url')}>Careers URL{arrow('careers_url')}</th>
+                <th className="sortable" onClick={() => toggleSort('search_domain')}>Search domain{arrow('search_domain')}</th>
+                <th className="sortable" onClick={() => toggleSort('location')}>Location{arrow('location')}</th>
+                <th className="sortable" onClick={() => toggleSort('region')}>Region{arrow('region')}</th>
+                <th></th>
+              </tr>
             </thead>
             <tbody>
               {filtered.map(({ c, i }) => (
