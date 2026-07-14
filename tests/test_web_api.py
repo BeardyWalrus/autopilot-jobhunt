@@ -385,6 +385,28 @@ def test_results_sorted_by_score(client):
     assert [j["score"] for j in jobs] == [90, 70, 40]
 
 
+def test_delete_single_result(client):
+    c, tmp = client
+    (tmp / "state" / "last_scan.json").write_text(json.dumps([
+        {"url": "u1", "score": 90}, {"url": "u2", "score": 70}, {"url": "u3", "score": 40},
+    ]))
+    r = c.request("DELETE", "/api/results", json={"url": "u2"})
+    assert r.status_code == 200 and r.json() == {"removed": 1, "count": 2}
+    assert [j["url"] for j in c.get("/api/results").json()["jobs"]] == ["u1", "u3"]
+    # deleting a URL that isn't there -> 404
+    assert c.request("DELETE", "/api/results", json={"url": "nope"}).status_code == 404
+
+
+def test_clear_all_results(client):
+    c, tmp = client
+    (tmp / "state" / "last_scan.json").write_text(json.dumps([
+        {"url": "u1", "score": 90}, {"url": "u2", "score": 70},
+    ]))
+    r = c.delete("/api/results/all")
+    assert r.status_code == 200 and r.json() == {"removed": 2, "count": 0}
+    assert c.get("/api/results").json()["count"] == 0
+
+
 # --- schedule -----------------------------------------------------------------
 
 def test_schedule_roundtrip_and_validation(client):

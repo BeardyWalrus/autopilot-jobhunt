@@ -55,6 +55,8 @@ export const api = {
   scanForget: () => req('/scan/forget', { method: 'POST' }),
 
   results: () => req('/results'),
+  deleteResult: (url) => req('/results', { method: 'DELETE', body: JSON.stringify({ url }) }),
+  clearResults: () => req('/results/all', { method: 'DELETE' }),
 
   getSchedule: () => req('/schedule'),
   putSchedule: (enabled, time) =>

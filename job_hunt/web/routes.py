@@ -431,6 +431,39 @@ def results() -> dict:
     return {"jobs": jobs, "count": len(jobs)}
 
 
+def _write_last_scan(jobs: list) -> None:
+    path = paths.last_scan_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(jobs, indent=2))
+
+
+@router.delete("/results")
+def delete_result(url: str = Body(..., embed=True)) -> dict:
+    """Remove a single job (matched by URL) from the saved scan results.
+
+    The job's URL stays in the seen-jobs memory, so deleting a result you don't
+    want doesn't make it re-appear on the next scan. Use Scan → Previously seen
+    jobs to un-remember it if you do want it back.
+    """
+    jobs = _read_json(paths.last_scan_path(), [])
+    if not isinstance(jobs, list):
+        jobs = []
+    kept = [j for j in jobs if j.get("url") != url]
+    removed = len(jobs) - len(kept)
+    if not removed:
+        raise HTTPException(404, "no result with that URL")
+    _write_last_scan(kept)
+    return {"removed": removed, "count": len(kept)}
+
+
+@router.delete("/results/all")
+def clear_results() -> dict:
+    """Clear all saved scan results (last_scan.json). Job history is left intact."""
+    before = len(_read_json(paths.last_scan_path(), []) or [])
+    _write_last_scan([])
+    return {"removed": before, "count": 0}
+
+
 @router.get("/results/history")
 def results_history() -> dict:
     jobs = _read_json(paths.job_history_path(), [])
