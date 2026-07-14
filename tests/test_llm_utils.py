@@ -91,6 +91,46 @@ def test_chat_with_llm_routes_claude_cli(monkeypatch):
     assert llm_utils.chat_with_llm({"llm_provider": "claude_cli"}, []) == "CLI"
 
 
+def test_chat_with_llm_routes_ollama(monkeypatch):
+    monkeypatch.setattr(llm_utils, "_chat_with_ollama", lambda *a, **k: "OLL")
+    assert llm_utils.chat_with_llm({"llm_provider": "ollama"}, []) == "OLL"
+
+
+# --- Ollama -------------------------------------------------------------------
+
+def test_make_ollama_client_defaults(monkeypatch):
+    monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
+    client = llm_utils._make_ollama_client({})
+    assert str(client.base_url).rstrip("/") == "http://localhost:11434/v1"
+
+
+def test_make_ollama_client_custom_base_url():
+    client = llm_utils._make_ollama_client({"ollama_base_url": "http://box:11434/v1"})
+    assert str(client.base_url).rstrip("/") == "http://box:11434/v1"
+
+
+def test_chat_with_ollama_success(monkeypatch):
+    fake = _client(lambda **k: _Resp("local answer"))
+    fake.base_url = "http://localhost:11434/v1"
+    monkeypatch.setattr(llm_utils, "_make_ollama_client", lambda cfg: fake)
+    out = llm_utils._chat_with_ollama({"ollama_model": "llama3.1"},
+                                      [{"role": "user", "content": "hi"}], 0.1, 100)
+    assert out == "local answer"
+
+
+def test_chat_with_ollama_connection_refused(monkeypatch):
+    from openai import APIConnectionError
+
+    def create(**k):
+        raise APIConnectionError.__new__(APIConnectionError)
+
+    fake = _client(create)
+    fake.base_url = "http://localhost:11434/v1"
+    monkeypatch.setattr(llm_utils, "_make_ollama_client", lambda cfg: fake)
+    with pytest.raises(RuntimeError, match="Could not reach Ollama"):
+        llm_utils._chat_with_ollama({}, [{"role": "user", "content": "x"}], 0.1, 100)
+
+
 # --- Anthropic ----------------------------------------------------------------
 
 def test_chat_with_anthropic(monkeypatch):

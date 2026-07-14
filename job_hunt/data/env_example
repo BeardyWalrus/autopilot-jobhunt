@@ -10,6 +10,12 @@ OPENROUTER_FALLBACK_MODELS="nvidia/nemotron-3-super-120b-a12b:free,google/gemma-
 # Set llm_provider=anthropic in config.json to use Claude instead of OpenRouter
 # ANTHROPIC_API_KEY="your_anthropic_api_key_here"
 
+# Ollama (optional — run models locally, no API key, no rate limits)
+# Set llm_provider=ollama in config.json (or LLM_PROVIDER=ollama below).
+# Start it with 'ollama serve' and pull a model with 'ollama pull llama3.1'.
+# OLLAMA_BASE_URL="http://localhost:11434/v1"
+# OLLAMA_MODEL="llama3.1"
+
 # Telegram Notification (optional — create bot via @BotFather)
 TELEGRAM_TOKEN="your_telegram_bot_token_here"
 TELEGRAM_CHAT_ID="your_telegram_chat_id_here"
