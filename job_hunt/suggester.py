@@ -103,7 +103,7 @@ def _parse_suggestions(raw: str) -> list[dict]:
 
 
 def suggest_companies(
-    config: dict, resume: str, existing: list[dict] | None = None, count: int = 8
+    config: dict, resume: str, existing: list[dict] | None = None, count: int = 8, on_token=None
 ) -> list[dict]:
     """Return up to `count` suggested companies. Each dict has the companies.json
     fields plus `reason` and `exists` (already tracked, matched by domain)."""
@@ -123,7 +123,8 @@ def suggest_companies(
     )
     provider = config.get("llm_provider") or "openrouter"
     logger.info(f"Suggesting {count} companies from your resume via {provider}...")
-    raw = chat_with_llm(config, messages=[{"role": "user", "content": prompt}], temperature=0.4)
+    raw = chat_with_llm(config, messages=[{"role": "user", "content": prompt}],
+                        temperature=0.4, on_token=on_token)
     suggestions = _parse_suggestions(raw)
 
     existing_domains = {c.get("search_domain", "").lower() for c in existing if c.get("search_domain")}
@@ -190,7 +191,7 @@ def _parse_review(raw: str) -> list[dict]:
 
 
 def review_companies(
-    config: dict, resume: str, companies: list[dict], batch_size: int = 50
+    config: dict, resume: str, companies: list[dict], batch_size: int = 50, on_token=None
 ) -> list[dict]:
     """Flag poor-fit companies to disable/remove.
 
@@ -213,7 +214,8 @@ def review_companies(
             profile=profile, resume=resume[:2500], companies_text=companies_text
         )
         logger.info(f"Reviewing companies {start + 1}-{start + len(batch)} of {len(companies)}...")
-        raw = chat_with_llm(config, messages=[{"role": "user", "content": prompt}], temperature=0.2)
+        raw = chat_with_llm(config, messages=[{"role": "user", "content": prompt}],
+                            temperature=0.2, on_token=on_token)
         by_name = {c.get("name", "").strip().lower(): j for j, c in enumerate(batch)}
         for rec in _parse_review(raw):
             j = by_name.get(rec["name"].strip().lower())

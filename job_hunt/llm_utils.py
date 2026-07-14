@@ -57,18 +57,46 @@ def list_ollama_models(base_url: str | None = None, config: dict | None = None) 
     return sorted(m.id for m in resp.data)
 
 
-def _chat_with_ollama(config: dict, messages: list[dict], temperature: float, max_tokens: int) -> str:
+def _stream_chat(llm: OpenAI, model: str, messages: list[dict], temperature: float,
+                 max_tokens: int, on_token) -> str:
+    """Stream a chat completion, calling on_token(delta) for each chunk. Returns
+    the full text. Used by the OpenAI-compatible providers (Ollama, OpenRouter)
+    so the web UI can show the model's output as it generates."""
+    resp = llm.chat.completions.create(
+        model=model,
+        messages=cast("Any", messages),
+        temperature=temperature,
+        max_tokens=max_tokens,
+        stream=True,
+    )
+    parts: list[str] = []
+    for chunk in resp:
+        if not chunk.choices:
+            continue
+        delta = chunk.choices[0].delta.content
+        if delta:
+            parts.append(delta)
+            on_token(delta)
+    return "".join(parts)
+
+
+def _chat_with_ollama(config: dict, messages: list[dict], temperature: float,
+                      max_tokens: int, on_token=None) -> str:
     model = config.get("ollama_model", "llama3.1")
     client = _make_ollama_client(config)
     logger.debug(f"LLM call → Ollama / {model} @ {client.base_url}")
     t0 = time.time()
     try:
-        resp = client.chat.completions.create(
-            model=model,
-            messages=cast("Any", messages),
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
+        if on_token:
+            text = _stream_chat(client, model, messages, temperature, max_tokens, on_token)
+        else:
+            resp = client.chat.completions.create(
+                model=model,
+                messages=cast("Any", messages),
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            text = resp.choices[0].message.content or ""
     except APIConnectionError:
         raise RuntimeError(
             f"Could not reach Ollama at {client.base_url}. Is it running?\n"
@@ -76,15 +104,7 @@ def _chat_with_ollama(config: dict, messages: list[dict], temperature: float, ma
             f"  Pull the model:    ollama pull {model}"
         )
     elapsed = time.time() - t0
-    text = resp.choices[0].message.content or ""
-    usage = resp.usage
-    if usage:
-        logger.debug(
-            f"LLM response: {len(text)} chars in {elapsed:.1f}s "
-            f"(in={usage.prompt_tokens} out={usage.completion_tokens} tokens) via ollama/{model}"
-        )
-    else:
-        logger.debug(f"LLM response: {len(text)} chars in {elapsed:.1f}s via ollama/{model}")
+    logger.debug(f"LLM response: {len(text)} chars in {elapsed:.1f}s via ollama/{model}")
     return text
 
 
@@ -180,15 +200,28 @@ def chat_with_llm(
     messages: list[dict],
     temperature: float = 0.1,
     max_tokens: int = 4096,
+    on_token=None,
 ) -> str:
+    """Dispatch a chat completion to the configured provider.
+
+    If on_token is given, it's called with each text chunk as it streams —
+    Ollama and OpenRouter stream natively; Anthropic and Claude CLI don't, so
+    their full output is passed to on_token once at the end.
+    """
     provider = config.get("llm_provider")
-    if provider == "anthropic":
-        return _chat_with_anthropic(config, messages, temperature, max_tokens)
-    if provider == "claude_cli":
-        return _chat_with_claude_cli(config, messages, temperature, max_tokens)
     if provider == "ollama":
-        return _chat_with_ollama(config, messages, temperature, max_tokens)
-    return chat_with_fallback(_make_openrouter_client(config), config, messages, temperature, max_tokens)
+        return _chat_with_ollama(config, messages, temperature, max_tokens, on_token)
+    if provider == "anthropic":
+        text = _chat_with_anthropic(config, messages, temperature, max_tokens)
+    elif provider == "claude_cli":
+        text = _chat_with_claude_cli(config, messages, temperature, max_tokens)
+    else:
+        return chat_with_fallback(
+            _make_openrouter_client(config), config, messages, temperature, max_tokens, on_token
+        )
+    if on_token and text:
+        on_token(text)  # non-streaming providers: emit the whole output at once
+    return text
 
 
 def chat_with_fallback(
@@ -197,6 +230,7 @@ def chat_with_fallback(
     messages: list[dict],
     temperature: float = 0.1,
     max_tokens: int = 4096,
+    on_token=None,
 ) -> str:
     primary = config.get("openrouter_model", "nvidia/nemotron-3-super-120b-a12b:free")
     fallbacks = config.get("openrouter_fallback_models", [])
@@ -208,22 +242,18 @@ def chat_with_fallback(
             try:
                 logger.debug(f"LLM call → {label} (attempt {attempt + 1})")
                 t0 = time.time()
-                resp = llm.chat.completions.create(
-                    model=model,
-                    messages=cast("Any", messages),
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                )
-                elapsed = time.time() - t0
-                text = resp.choices[0].message.content or ""
-                usage = resp.usage
-                if usage:
-                    logger.debug(
-                        f"LLM response: {len(text)} chars in {elapsed:.1f}s "
-                        f"(in={usage.prompt_tokens} out={usage.completion_tokens} tokens) via {model}"
-                    )
+                if on_token:
+                    text = _stream_chat(llm, model, messages, temperature, max_tokens, on_token)
                 else:
-                    logger.debug(f"LLM response: {len(text)} chars in {elapsed:.1f}s via {model}")
+                    resp = llm.chat.completions.create(
+                        model=model,
+                        messages=cast("Any", messages),
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                    )
+                    text = resp.choices[0].message.content or ""
+                elapsed = time.time() - t0
+                logger.debug(f"LLM response: {len(text)} chars in {elapsed:.1f}s via {model}")
                 return text
             except RateLimitError:
                 if attempt == 0:

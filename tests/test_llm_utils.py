@@ -153,6 +153,45 @@ def test_chat_with_ollama_connection_refused(monkeypatch):
         llm_utils._chat_with_ollama({}, [{"role": "user", "content": "x"}], 0.1, 100)
 
 
+# --- streaming (on_token) -----------------------------------------------------
+
+def _stream_client(deltas):
+    def create(**k):
+        if k.get("stream"):
+            return (
+                types.SimpleNamespace(choices=[types.SimpleNamespace(delta=types.SimpleNamespace(content=d))])
+                for d in deltas
+            )
+        return _Resp("".join(deltas))
+
+    fake = _client(create)
+    fake.base_url = "http://x/v1"
+    return fake
+
+
+def test_ollama_streams_tokens(monkeypatch):
+    monkeypatch.setattr(llm_utils, "_make_ollama_client", lambda cfg: _stream_client(["Hello", " ", "world"]))
+    got = []
+    out = llm_utils._chat_with_ollama({"ollama_model": "m"}, [{"role": "user", "content": "hi"}],
+                                      0.1, 100, on_token=got.append)
+    assert out == "Hello world" and got == ["Hello", " ", "world"]
+
+
+def test_openrouter_streams_tokens():
+    got = []
+    out = llm_utils.chat_with_fallback(_stream_client(["a", "b", "c"]), {"openrouter_model": "m"},
+                                       [{"role": "user", "content": "x"}], on_token=got.append)
+    assert out == "abc" and got == ["a", "b", "c"]
+
+
+def test_nonstreaming_provider_emits_full_output(monkeypatch):
+    # Anthropic doesn't stream — on_token still fires once with the whole output.
+    monkeypatch.setattr(llm_utils, "_chat_with_anthropic", lambda *a, **k: "full answer")
+    got = []
+    out = llm_utils.chat_with_llm({"llm_provider": "anthropic"}, [], on_token=got.append)
+    assert out == "full answer" and got == ["full answer"]
+
+
 # --- Anthropic ----------------------------------------------------------------
 
 def test_chat_with_anthropic(monkeypatch):

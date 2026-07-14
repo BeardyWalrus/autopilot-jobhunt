@@ -17,6 +17,7 @@ export default function Boards() {
   const [jobRunning, setJobRunning] = useState(false)
   const esRef = useRef(null)
   const logRef = useRef(null)
+  const tokenRunRef = useRef(false)
 
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight
@@ -84,7 +85,7 @@ export default function Boards() {
     setMsg(null)
     setSuggestions(null)
     setFlagged(null)
-    setJobLog([])
+    setJobLog('')
     setJobRunning(true)
     try {
       if (kind === 'suggest') await api.suggestStart(8)
@@ -98,7 +99,23 @@ export default function Boards() {
     esRef.current?.close()
     const es = new EventSource('/api/companies/jobs/stream')
     esRef.current = es
-    es.onmessage = (ev) => setJobLog((prev) => [...(prev || []), ev.data])
+    // Status lines get their own row; streamed model tokens append inline,
+    // starting the model's output on a fresh line after the last status line.
+    // The ref is read+written inside the updater so it stays consistent with
+    // React's deferred, in-order execution of state updates.
+    tokenRunRef.current = false
+    es.onmessage = (ev) =>
+      setJobLog((prev) => {
+        tokenRunRef.current = false
+        return (prev ? prev + '\n' : '') + ev.data
+      })
+    es.addEventListener('token', (ev) =>
+      setJobLog((prev) => {
+        const sep = tokenRunRef.current ? '' : prev && !prev.endsWith('\n') ? '\n' : ''
+        tokenRunRef.current = true
+        return (prev || '') + sep + ev.data
+      }),
+    )
     es.addEventListener('end', async () => {
       es.close()
       setJobRunning(false)
@@ -183,14 +200,14 @@ export default function Boards() {
           </button>
         </div>
 
-        {jobLog && (
+        {jobLog !== null && (
           <div className="joblog-wrap">
             <div className="row between">
               <span className="muted small">{jobRunning ? 'Running…' : 'Log'}</span>
               {!jobRunning && <button className="link" onClick={() => setJobLog(null)}>hide log</button>}
             </div>
             <pre className="log joblog" ref={logRef}>
-              {jobLog.length ? jobLog.join('\n') : 'Starting…'}
+              {jobLog || 'Starting…'}
             </pre>
           </div>
         )}
