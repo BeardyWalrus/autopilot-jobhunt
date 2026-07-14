@@ -9,6 +9,18 @@ reconstructed from git history.
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-07-14
+
+### Added
+- **Suggest search terms from your résumé** (Settings → Job search terms): a
+  button that asks the LLM to propose keywords + seniority from your résumé and
+  profile, streams its thinking live, and fills the fields for you to edit before
+  saving. Runs on the shared background job runner, so it survives navigating away.
+- **View / edit previously seen jobs** (Scan tab): the seen-URL memory is no
+  longer a black box — expand it to see the URLs the scanner skips and remove
+  individual ones so just those jobs are re-discovered and re-scored next scan.
+  Backed by `GET /api/scan/seen?limit=` and `PUT /api/scan/seen`.
+
 ## [0.9.0] — 2026-07-14
 
 ### Added

@@ -97,3 +97,27 @@ def test_reconsider_companies_ignores_unmatched_names(monkeypatch):
     monkeypatch.setattr(suggester, "chat_with_llm", lambda *a, **k: "NAME: Ghost Corp\nREASON: n/a")
     rec = suggester.reconsider_companies({"candidate": {}}, "r", [{"name": "OpenAI", "search_domain": "openai.com"}])
     assert rec == []
+
+
+# --- suggest_search_terms ------------------------------------------------------
+
+def test_parse_search_terms():
+    raw = ('Here you go:\n'
+           'KEYWORDS: "product manager" OR "product lead"\n'
+           'SENIORITY: senior OR staff OR principal\n')
+    terms = suggester._parse_search_terms(raw)
+    assert terms["search_keywords"] == '"product manager" OR "product lead"'
+    assert terms["search_seniority"] == "senior OR staff OR principal"
+
+
+def test_parse_search_terms_missing_line():
+    terms = suggester._parse_search_terms("KEYWORDS: designer OR \"product designer\"")
+    assert terms["search_keywords"].startswith("designer")
+    assert terms["search_seniority"] == ""
+
+
+def test_suggest_search_terms(monkeypatch):
+    monkeypatch.setattr(suggester, "chat_with_llm",
+                        lambda *a, **k: "KEYWORDS: \"data engineer\" OR ETL\nSENIORITY: senior OR lead")
+    terms = suggester.suggest_search_terms({"candidate": {"name": "Ada"}}, "resume text")
+    assert terms == {"search_keywords": '"data engineer" OR ETL', "search_seniority": "senior OR lead"}

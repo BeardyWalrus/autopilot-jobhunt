@@ -32,6 +32,7 @@ export const api = {
   reviewStart: (includeDisabled = true) =>
     req('/companies/review', { method: 'POST', body: JSON.stringify({ include_disabled: includeDisabled }) }),
   reconsiderStart: () => req('/companies/reconsider', { method: 'POST' }),
+  suggestSearchTerms: () => req('/candidate/search-terms/suggest', { method: 'POST' }),
   jobsResult: () => req('/companies/jobs/result'),
 
   getResume: () => req('/resume'),
@@ -49,6 +50,8 @@ export const api = {
   scanStop: () => req('/scan/stop', { method: 'POST' }),
   scanLogs: () => req('/scan/logs?limit=2000'),
   scanSeen: () => req('/scan/seen'),
+  scanSeenList: (limit = 2000) => req(`/scan/seen?limit=${limit}`),
+  scanSeenSet: (urls) => req('/scan/seen', { method: 'PUT', body: JSON.stringify({ urls }) }),
   scanForget: () => req('/scan/forget', { method: 'POST' }),
 
   results: () => req('/results'),

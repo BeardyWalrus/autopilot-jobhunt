@@ -157,6 +157,11 @@ tr.disabled td:first-child { text-decoration: none; }
 .about .kv:last-child { border-bottom: 0; }
 .mono { font-family: 'SF Mono', Menlo, Consolas, monospace; }
 
+.seen-list { list-style: none; margin: 8px 0; padding: 0; max-height: 320px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+.seen-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 12px; border-bottom: 1px solid var(--border); }
+.seen-item:last-child { border-bottom: 0; }
+.seen-item .url { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 .score { font-weight: 700; padding: 2px 8px; border-radius: 6px; }
 .score.high { color: var(--high); background: rgba(52, 199, 123, 0.12); }
 .score.mid { color: var(--mid); background: rgba(224, 179, 65, 0.12); }
