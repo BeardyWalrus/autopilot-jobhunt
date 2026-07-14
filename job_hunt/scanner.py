@@ -14,6 +14,15 @@ from job_hunt.notifier import send_telegram
 logger = get_logger()
 
 
+class ScoringError(RuntimeError):
+    """Raised when the LLM can't be reached or its scoring output can't be parsed.
+
+    run_scan catches this per batch and saves those jobs unscored, so a transient
+    LLM problem never silently drops jobs (they'd otherwise be marked seen and
+    never retried).
+    """
+
+
 def _telegram_configured(tg: dict) -> bool:
     """True only when Telegram has a real token AND chat_id.
 
@@ -402,6 +411,7 @@ def score_jobs(jobs: list[dict], resume: str, config: dict) -> list[dict]:
         min_score=min_score,
     )
 
+    provider = config.get("llm_provider") or "openrouter"
     logger.debug(f"  Scoring {len(jobs)} job(s) via LLM (min_score={min_score})...")
     t0 = time.time()
     try:
@@ -411,15 +421,32 @@ def score_jobs(jobs: list[dict], resume: str, config: dict) -> list[dict]:
             temperature=0.1,
         )
     except Exception as e:
-        logger.error(f"  Scoring error: {e}")
-        return []
+        # Let the caller's batch handler preserve these jobs unscored rather than
+        # losing them: score_jobs returning [] would mark them seen and drop them.
+        raise ScoringError(f"{provider} LLM call failed: {e}") from e
     elapsed = time.time() - t0
 
     scored = _parse_scored_output(raw)
     if not scored:
-        logger.error(f"  Could not parse any scored jobs from LLM output ({len(raw)} chars)")
-        logger.debug(f"  Raw output began: {raw[:400]!r}")
-        return []
+        # Surface WHAT came back at ERROR level (not DEBUG) so the failure is
+        # debuggable from the normal scan log — the output is short here by
+        # definition, so printing it is cheap and diagnostic.
+        preview = raw.strip()
+        logger.error(
+            f"  Could not parse any scored jobs from the {provider} LLM output "
+            f"({len(raw)} chars). Raw output: {preview[:500]!r}"
+        )
+        if len(preview) < 20:
+            logger.error(
+                "  The model returned almost nothing — likely an empty response. "
+                "Common causes: a 'reasoning' model that spent its whole token budget "
+                "thinking and returned empty content (raise max_tokens or switch to a "
+                "non-reasoning model), a small local model that can't follow the scoring "
+                "format, or a hit quota / rate limit."
+            )
+        # Raise so the batch is saved unscored (see caller) instead of silently
+        # dropped — a parse failure shouldn't cost us the jobs permanently.
+        raise ScoringError(f"{provider} returned unparseable scoring output ({len(raw)} chars)")
     logger.debug(f"  LLM scoring complete in {elapsed:.1f}s — {len(scored)} results parsed")
 
     results = []

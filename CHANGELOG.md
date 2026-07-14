@@ -9,6 +9,28 @@ reconstructed from git history.
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-07-14
+
+### Added
+- **Scan log level** setting (Settings → Diagnostics): switch the scan log between
+  INFO and DEBUG from the browser. DEBUG shows per-URL/per-job detail and the raw
+  LLM output. (The full DEBUG log is always written to `scan.log` regardless.)
+- **Forget scanned history** button (Scan tab): clears the scanner's seen-jobs
+  memory so the next scan re-discovers and re-scores every job. Saved results are
+  kept — only the "already seen, skip it" list is cleared.
+
+### Changed
+- Scoring failures are now **debuggable from the normal scan log** — when the LLM
+  output can't be parsed, the raw output is logged at ERROR (not DEBUG), with a
+  targeted hint when the model returned almost nothing (e.g. a reasoning model
+  that spent its token budget, a too-small local model, or a quota limit).
+
+### Fixed
+- A scoring/LLM failure no longer **silently drops** a batch of jobs. Previously a
+  parse failure returned no results while the jobs were still marked "seen," so
+  they were lost and never retried; they're now saved unscored (matching the
+  existing behavior for LLM call errors).
+
 ## [0.7.0] — 2026-07-14
 
 ### Added

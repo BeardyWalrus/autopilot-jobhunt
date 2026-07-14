@@ -316,6 +316,30 @@ def scan_stop() -> dict:
     return {"stopped": stopped, **runner.status()}
 
 
+@router.get("/scan/seen")
+def scan_seen() -> dict:
+    """How many job URLs the scanner remembers as already-seen (and skips)."""
+    state = _read_json(paths.seen_jobs_path(), {}) or {}
+    return {"seen": len(state.get("seen_urls", []))}
+
+
+@router.post("/scan/forget")
+def scan_forget() -> dict:
+    """Clear the scanner's seen-jobs memory so the next scan re-discovers and
+    re-scores every job (useful to redo jobs after a scoring/model problem).
+
+    Only the seen-URL memory is cleared — last_scan.json and job_history.json
+    (your saved results) are left intact.
+    """
+    if runner.running:
+        raise HTTPException(409, "A scan is running — stop it before clearing history.")
+    path = paths.seen_jobs_path()
+    before = len((_read_json(path, {}) or {}).get("seen_urls", []))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"seen_urls": []}, indent=2))
+    return {"forgotten": before, "seen": 0}
+
+
 @router.get("/scan/stream")
 def scan_stream() -> StreamingResponse:
     def event_stream():
