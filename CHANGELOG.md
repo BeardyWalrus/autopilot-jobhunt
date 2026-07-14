@@ -15,6 +15,11 @@ reconstructed from git history.
   PRs still build the image to verify it, but don't push. This lets several changes
   accumulate on `main` and ship together when a release is cut.
 
+### Fixed
+- **Mobile nav tabs.** On phones the four tabs (Scan, Job Boards, Resume, Settings)
+  were a cramped horizontal-scroll strip; they now lay out as a 2×2 grid of large,
+  tappable buttons on their own row below the brand. Desktop is unchanged.
+
 ## [0.12.1] — 2026-07-14
 
 ### Fixed
