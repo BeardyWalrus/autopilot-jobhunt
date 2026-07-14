@@ -352,6 +352,7 @@ def run_scan(config: dict, companies: list[dict]) -> None:
         "openrouter": config.get("openrouter_model", "default"),
         "anthropic": config.get("anthropic_model", "default"),
         "claude_cli": config.get("claude_cli_model") or "claude default",
+        "ollama": config.get("ollama_model", "llama3.1"),
     }
     logger.info(f"LLM provider: {provider} | Model: {model_by_provider.get(provider, 'default')}")
 

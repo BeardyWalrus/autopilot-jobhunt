@@ -60,6 +60,16 @@ job_hunt/
 - **Multiple scans/day:** risks exhausting free-tier quota — run once nightly via cron
 - Check live per-model limits: [openrouter.ai/models](https://openrouter.ai/models)
 
+### Ollama (LLM backend — local, no API key, no rate limits)
+
+- **Cost:** free — models run locally on your own machine, no quota, no daily cap
+- **Setup:** install from [ollama.com](https://ollama.com), then `ollama pull llama3.1`
+- **Activate:** set `"llm_provider": "ollama"` in `config.json` or `LLM_PROVIDER=ollama` in `.env`
+- **Model:** set `"ollama_model": "llama3.1"` (or `"mistral"`, `"qwen2.5"`, etc.)
+- **Host:** defaults to `http://localhost:11434/v1`; override with `"ollama_base_url"` / `OLLAMA_BASE_URL` for a remote Ollama server
+- **Rate limits:** none — bounded only by your local hardware
+- **"Could not reach Ollama":** the server isn't running — start it with `ollama serve` and confirm the model is pulled (`ollama pull <model>`)
+
 ### Claude Code CLI (LLM backend — no API key needed)
 
 - **Cost:** uses your Claude subscription (Pro/Team/Enterprise)

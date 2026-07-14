@@ -4,7 +4,7 @@ import subprocess
 import time
 from typing import Any, cast
 
-from openai import OpenAI, RateLimitError
+from openai import APIConnectionError, OpenAI, RateLimitError
 
 from job_hunt.log import get_logger
 
@@ -22,6 +22,48 @@ def _make_openrouter_client(config: dict) -> OpenAI:
         base_url="https://openrouter.ai/api/v1",
         timeout=_LLM_REQUEST_TIMEOUT,
     )
+
+
+def _make_ollama_client(config: dict) -> OpenAI:
+    base_url = config.get("ollama_base_url") or os.getenv("OLLAMA_BASE_URL") or "http://localhost:11434/v1"
+    return OpenAI(
+        # Ollama ignores the API key, but the OpenAI SDK refuses to start without
+        # a non-empty one — "ollama" is the conventional placeholder.
+        api_key=config.get("ollama_api_key") or os.getenv("OLLAMA_API_KEY") or "ollama",
+        base_url=base_url,
+        timeout=_LLM_REQUEST_TIMEOUT,
+    )
+
+
+def _chat_with_ollama(config: dict, messages: list[dict], temperature: float, max_tokens: int) -> str:
+    model = config.get("ollama_model", "llama3.1")
+    client = _make_ollama_client(config)
+    logger.debug(f"LLM call → Ollama / {model} @ {client.base_url}")
+    t0 = time.time()
+    try:
+        resp = client.chat.completions.create(
+            model=model,
+            messages=cast("Any", messages),
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+    except APIConnectionError:
+        raise RuntimeError(
+            f"Could not reach Ollama at {client.base_url}. Is it running?\n"
+            f"  Start the server:  ollama serve\n"
+            f"  Pull the model:    ollama pull {model}"
+        )
+    elapsed = time.time() - t0
+    text = resp.choices[0].message.content or ""
+    usage = resp.usage
+    if usage:
+        logger.debug(
+            f"LLM response: {len(text)} chars in {elapsed:.1f}s "
+            f"(in={usage.prompt_tokens} out={usage.completion_tokens} tokens) via ollama/{model}"
+        )
+    else:
+        logger.debug(f"LLM response: {len(text)} chars in {elapsed:.1f}s via ollama/{model}")
+    return text
 
 
 def _chat_with_anthropic(config: dict, messages: list[dict], temperature: float, max_tokens: int) -> str:
@@ -122,6 +164,8 @@ def chat_with_llm(
         return _chat_with_anthropic(config, messages, temperature, max_tokens)
     if provider == "claude_cli":
         return _chat_with_claude_cli(config, messages, temperature, max_tokens)
+    if provider == "ollama":
+        return _chat_with_ollama(config, messages, temperature, max_tokens)
     return chat_with_fallback(_make_openrouter_client(config), config, messages, temperature, max_tokens)
 
 
