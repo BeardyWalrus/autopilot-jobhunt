@@ -150,6 +150,66 @@ def test_fetch_job_details(monkeypatch):
     assert out[0]["content"].startswith("Full job") and out[0]["title"] == "Fetched Title"
 
 
+def test_fetch_job_details_reports_progress(monkeypatch, caplog):
+    # 12 jobs → 2 batches; INFO progress lines should surface (not stay silent).
+    tf = _fake_tf(contents={f"https://x.co/jobs/{i}": "JD" for i in range(12)})
+    jobs = [{"url": f"https://x.co/jobs/{i}", "title": "t"} for i in range(12)]
+    with caplog.at_level("INFO", logger="autopilot"):
+        out = scanner.fetch_job_details(tf, jobs, label="Acme")
+    assert len(out) == 12
+    msgs = " ".join(r.getMessage() for r in caplog.records)
+    assert "[Acme]" in msgs and "batch 1/2" in msgs and "batch 2/2" in msgs
+
+
+# --- incremental persistence ---------------------------------------------------
+
+def test_persist_scan_writes_and_dedups(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    jobs = [{"url": "u1", "score": 90}, {"url": "u2", "score": 80}]
+    added = scanner._persist_scan(jobs)
+    assert added == 2
+    assert len(json.loads(scanner.LAST_SCAN_FILE.read_text())) == 2
+    assert len(json.loads(scanner.JOB_HISTORY_FILE.read_text())) == 2
+
+    # Second checkpoint with one overlapping URL: last_scan is replaced wholesale,
+    # history only gains the genuinely new row.
+    added2 = scanner._persist_scan([{"url": "u2", "score": 80}, {"url": "u3", "score": 70}])
+    assert added2 == 1
+    assert len(json.loads(scanner.LAST_SCAN_FILE.read_text())) == 2
+    assert {j["url"] for j in json.loads(scanner.JOB_HISTORY_FILE.read_text())} == {"u1", "u2", "u3"}
+
+
+def test_persist_scan_tolerates_corrupt_history(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    scanner.JOB_HISTORY_FILE.parent.mkdir(exist_ok=True)
+    scanner.JOB_HISTORY_FILE.write_text("{not json")
+    added = scanner._persist_scan([{"url": "u1", "score": 90}])
+    assert added == 1
+    assert json.loads(scanner.JOB_HISTORY_FILE.read_text())[0]["url"] == "u1"
+
+
+def test_run_scan_persists_before_company_failure(scan_setup, monkeypatch):
+    # First company succeeds, second raises mid-fetch. The checkpoint means the
+    # first company's results are already on disk — a crash doesn't lose them.
+    cfg, companies = scan_setup
+    companies = companies + [{"name": "Boom", "careers_url": "c", "search_domain": "y.co",
+                              "location": "NY", "region": "NA"}]
+
+    def flaky_fetch(tf, jobs, label=""):
+        if label == "Boom":
+            raise RuntimeError("network died")
+        return jobs
+
+    monkeypatch.setattr(scanner, "discover_job_urls", lambda tf, co, seen, cand=None: [
+        {"url": f"https://x.co/{co['name']}", "title": "MLE", "company": co["name"],
+         "location": co["location"], "region": co["region"]}])
+    monkeypatch.setattr(scanner, "fetch_job_details", flaky_fetch)
+    monkeypatch.setattr(scanner, "send_telegram", lambda *a: True)
+    scanner.run_scan(cfg, companies)
+    saved = json.loads(scanner.LAST_SCAN_FILE.read_text())
+    assert any(j["company"] == "Acme" for j in saved)  # survived the later failure
+
+
 # --- export --------------------------------------------------------------------
 
 def test_export_to_csv(tmp_path, monkeypatch):
@@ -171,7 +231,7 @@ def scan_setup(tmp_path, monkeypatch):
     monkeypatch.setattr(scanner, "discover_job_urls", lambda tf, co, seen, cand=None: [
         {"url": "https://x.co/jobs/1", "title": "MLE", "company": co["name"],
          "location": co["location"], "region": co["region"]}])
-    monkeypatch.setattr(scanner, "fetch_job_details", lambda tf, jobs: jobs)
+    monkeypatch.setattr(scanner, "fetch_job_details", lambda tf, jobs, label="": jobs)
     monkeypatch.setattr(scanner, "score_jobs", lambda jobs, resume, cfg: [
         {**jobs[0], "score": 90, "extracted_title": "MLE", "reason": "fit", "stack": "Py"}])
     cfg = {"tinyfish_api_key": "k", "candidate": {"name": "Ada", "resume_path": "resume.md",
