@@ -45,6 +45,11 @@ def _telegram_configured(tg: dict) -> bool:
 STATE_FILE = Path("state/seen_jobs.json")
 LAST_SCAN_FILE = Path("state/last_scan.json")
 JOB_HISTORY_FILE = Path("state/job_history.json")
+# Cumulative, status-carrying results shown in the web UI. Unlike last_scan.json
+# (which is overwritten each run, for the CLI's `draft N`), this accumulates
+# across runs and keeps each job until it's marked applied/not-a-fit or deleted.
+RESULTS_FILE = Path("state/results.json")
+RESULT_STATUSES = ("new", "applied", "not_applied")
 
 JOB_URL_RE = re.compile(
     r"/(job|jobs|opening|openings|position|positions|vacancy|vacancies|role|roles|apply)"
@@ -546,14 +551,64 @@ def _export_to_csv(jobs: list[dict], label: str) -> Path:
     return out_path
 
 
-def _persist_scan(all_scored_jobs: list[dict]) -> int:
-    """Write last_scan.json and merge new rows into job_history.json.
+def _merge_results(all_scored_jobs: list[dict]) -> None:
+    """Merge this run's jobs into the cumulative results store (results.json).
 
-    Idempotent and safe to call repeatedly mid-scan: history is deduped by URL,
-    so incremental checkpoints leave a complete, up-to-date record on disk even
-    if a later company crashes the run. Returns the number of new history rows.
+    New jobs are appended with status "new"; jobs already present keep their
+    status (applied / not_applied / new) but have their scored fields refreshed.
+    Nothing is ever removed here — the user removes results in the UI. Seeds from
+    last_scan.json on first use so existing installs don't lose their last run.
+    """
+    existing: list[dict] = []
+    if RESULTS_FILE.exists():
+        try:
+            existing = json.loads(RESULTS_FILE.read_text())
+        except Exception:
+            existing = []
+    elif LAST_SCAN_FILE.exists():
+        # Migration: fold the previous run (about to be overwritten) into the store.
+        try:
+            for j in json.loads(LAST_SCAN_FILE.read_text()):
+                if isinstance(j, dict):
+                    existing.append({**j, "status": j.get("status", "new")})
+        except Exception:
+            existing = []
+
+    by_url: dict[str, dict] = {}
+    ordered: list[dict] = []
+    for j in existing:
+        url = j.get("url") if isinstance(j, dict) else None
+        if url and url not in by_url:
+            by_url[url] = j
+            ordered.append(j)
+    for job in all_scored_jobs:
+        url = job.get("url")
+        if not url:
+            continue
+        if url in by_url:
+            prev = by_url[url]
+            status = prev.get("status", "new")
+            prev.update(job)
+            prev["status"] = status  # refresh score/title/etc. but keep the user's status
+        else:
+            entry = {**job, "status": job.get("status", "new")}
+            by_url[url] = entry
+            ordered.append(entry)
+
+    RESULTS_FILE.write_text(json.dumps(ordered, indent=2))
+
+
+def _persist_scan(all_scored_jobs: list[dict]) -> int:
+    """Write last_scan.json, merge into results.json, and append to job_history.json.
+
+    Idempotent and safe to call repeatedly mid-scan: history and results are
+    deduped by URL, so incremental checkpoints leave a complete, up-to-date record
+    on disk even if a later company crashes the run. Returns new history rows.
     """
     LAST_SCAN_FILE.parent.mkdir(exist_ok=True)
+    # Merge into the cumulative store BEFORE overwriting last_scan, so the first
+    # run after an upgrade can still recover the previous run from last_scan.json.
+    _merge_results(all_scored_jobs)
     LAST_SCAN_FILE.write_text(json.dumps(all_scored_jobs, indent=2))
 
     history: list[dict] = []

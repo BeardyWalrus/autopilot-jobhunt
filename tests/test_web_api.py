@@ -399,12 +399,50 @@ def test_delete_single_result(client):
 
 def test_clear_all_results(client):
     c, tmp = client
-    (tmp / "state" / "last_scan.json").write_text(json.dumps([
+    (tmp / "state" / "results.json").write_text(json.dumps([
         {"url": "u1", "score": 90}, {"url": "u2", "score": 70},
     ]))
     r = c.delete("/api/results/all")
     assert r.status_code == 200 and r.json() == {"removed": 2, "count": 0}
     assert c.get("/api/results").json()["count"] == 0
+
+
+def test_results_default_status_new_and_prefers_results_json(client, tmp_path):
+    c, tmp = client
+    # results.json is canonical; last_scan is ignored once results.json exists.
+    (tmp / "state" / "last_scan.json").write_text(json.dumps([{"url": "old", "score": 10}]))
+    (tmp / "state" / "results.json").write_text(json.dumps([{"url": "u1", "score": 90}]))
+    jobs = c.get("/api/results").json()["jobs"]
+    assert [j["url"] for j in jobs] == ["u1"]  # last_scan not merged in
+    assert jobs[0]["status"] == "new"  # default status filled in
+
+
+def test_set_result_status(client, tmp_path):
+    c, tmp = client
+    (tmp / "state" / "results.json").write_text(json.dumps([
+        {"url": "u1", "score": 90}, {"url": "u2", "score": 70},
+    ]))
+    r = c.put("/api/results/status", json={"url": "u1", "status": "applied"})
+    assert r.status_code == 200 and r.json()["status"] == "applied"
+    got = {j["url"]: j.get("status") for j in c.get("/api/results").json()["jobs"]}
+    assert got == {"u1": "applied", "u2": "new"}
+    # undo back to new
+    c.put("/api/results/status", json={"url": "u1", "status": "new"})
+    assert {j["url"]: j["status"] for j in c.get("/api/results").json()["jobs"]}["u1"] == "new"
+    # invalid status -> 400; unknown url -> 404
+    assert c.put("/api/results/status", json={"url": "u1", "status": "maybe"}).status_code == 400
+    assert c.put("/api/results/status", json={"url": "nope", "status": "applied"}).status_code == 404
+
+
+def test_status_survives_and_delete_persists_in_results_json(client):
+    c, tmp = client
+    (tmp / "state" / "results.json").write_text(json.dumps([
+        {"url": "u1", "score": 90, "status": "applied"}, {"url": "u2", "score": 70},
+    ]))
+    # deleting one leaves the other (with its status) in results.json
+    c.request("DELETE", "/api/results", json={"url": "u2"})
+    saved = json.loads((tmp / "state" / "results.json").read_text())
+    assert [(j["url"], j.get("status")) for j in saved] == [("u1", "applied")]
 
 
 # --- schedule -----------------------------------------------------------------
