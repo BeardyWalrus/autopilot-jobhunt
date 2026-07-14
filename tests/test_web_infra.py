@@ -9,7 +9,6 @@ pytest.importorskip("fastapi")
 from job_hunt.web import app as appmod  # noqa: E402
 from job_hunt.web import scan_runner, scheduler, server  # noqa: E402
 
-
 # --- scheduler ----------------------------------------------------------------
 
 def test_schedule_read_write(tmp_path, monkeypatch):
