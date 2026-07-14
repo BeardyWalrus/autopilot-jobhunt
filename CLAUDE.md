@@ -53,8 +53,11 @@ docker compose pull         # or pull the prebuilt image from GHCR, then: up -d
 ```
 
 **Prebuilt image:** `ghcr.io/beardywalrus/autopilot-jobhunt-web:latest` (multi-arch
-amd64/arm64), published by `.github/workflows/docker-publish.yml` on every push to
-`main` and on `v*` tags.
+amd64/arm64), published by `.github/workflows/docker-publish.yml` **at release time
+only** — on a `v*` tag (pushes `:latest` + `:MAJOR.MINOR` + `:MAJOR.MINOR.PATCH`) or a
+manual **Run workflow** (`workflow_dispatch`, pushes `:latest`). Merges to `main` no
+longer republish `:latest`; PRs build the image to verify it but don't push. So
+several changes can land on `main` and ship together when you cut the release.
 
 Docker seeds `./data` (config.json, companies.json, resume/, state/, output/) on
 first run; edit everything from the **Settings**, **Job Boards**, and **Resume**
