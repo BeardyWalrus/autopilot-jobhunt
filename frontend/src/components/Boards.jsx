@@ -28,6 +28,20 @@ export default function Boards() {
 
   useEffect(() => {
     api.getCompanies().then((r) => setCompanies(r.companies)).catch((e) => setMsg({ err: e.message }))
+    // Reconnect to a Suggest/Review job that's still running (or just finished)
+    // so navigating away and back doesn't lose it — the job runs on the backend
+    // regardless of the tab being mounted.
+    api.jobsResult().then((r) => {
+      if (!r.name) return
+      if (r.running) {
+        setJobLog('')
+        setJobRunning(true)
+        attachStream()
+      } else if (r.ok && r.result) {
+        populateResult(r.result)
+      }
+    }).catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const regions = useMemo(
@@ -97,21 +111,21 @@ export default function Boards() {
     }
   }
 
-  async function runJob(kind) {
-    setMsg(null)
-    setSuggestions(null)
-    setFlagged(null)
-    setJobLog('')
-    setJobRunning(true)
-    try {
-      if (kind === 'suggest') await api.suggestStart(8)
-      else await api.reviewStart()
-    } catch (e) {
-      setJobRunning(false)
-      setJobLog(null)
-      setMsg({ err: e.message })
-      return
+  function populateResult(res) {
+    if (!res) return
+    if (res.kind === 'suggest') {
+      setSuggestions(res.suggestions || [])
+      if (!res.suggestions?.length) setMsg({ err: 'No suggestions came back — try again.' })
+    } else if (res.kind === 'review') {
+      setFlagged(res.flagged || [])
+      if (!res.flagged?.length) setMsg({ ok: `Reviewed ${res.reviewed} companies — none look like a poor fit.` })
     }
+  }
+
+  // Open the SSE stream (used both to start a fresh job and to reconnect to a
+  // running one after navigating back). The stream replays the buffered log, so
+  // a reconnect restores everything printed so far.
+  function attachStream() {
     esRef.current?.close()
     const es = new EventSource('/api/companies/jobs/stream')
     esRef.current = es
@@ -141,14 +155,7 @@ export default function Boards() {
           setMsg({ err: r.error || 'The job failed — see the log above.' })
           return
         }
-        const res = r.result || {}
-        if (res.kind === 'suggest') {
-          setSuggestions(res.suggestions || [])
-          if (!res.suggestions?.length) setMsg({ err: 'No suggestions came back — try again.' })
-        } else if (res.kind === 'review') {
-          setFlagged(res.flagged || [])
-          if (!res.flagged?.length) setMsg({ ok: `Reviewed ${res.reviewed} companies — none look like a poor fit.` })
-        }
+        populateResult(r.result)
       } catch (e) {
         setMsg({ err: e.message })
       }
@@ -157,6 +164,24 @@ export default function Boards() {
       es.close()
       setJobRunning(false)
     }
+  }
+
+  async function runJob(kind) {
+    setMsg(null)
+    setSuggestions(null)
+    setFlagged(null)
+    setJobLog('')
+    setJobRunning(true)
+    try {
+      if (kind === 'suggest') await api.suggestStart(8)
+      else await api.reviewStart()
+    } catch (e) {
+      setJobRunning(false)
+      setJobLog(null)
+      setMsg({ err: e.message })
+      return
+    }
+    attachStream()
   }
 
   function addSuggestion(s) {
