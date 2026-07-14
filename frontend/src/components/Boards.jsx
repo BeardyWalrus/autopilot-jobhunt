@@ -97,13 +97,16 @@ export default function Boards() {
         <div className="row between">
           <h2>Job boards <span className="muted">({activeCount} on / {companies.length})</span></h2>
           <div className="row">
-            <button onClick={suggest} disabled={suggesting}>{suggesting ? 'Thinking…' : '✨ Suggest from résumé'}</button>
             <input placeholder="Search name / domain / location" value={q} onChange={(e) => setQ(e.target.value)} />
             <select value={region} onChange={(e) => setRegion(e.target.value)}>
               {regions.map((r) => <option key={r} value={r}>{r === 'all' ? 'All regions' : r}</option>)}
             </select>
           </div>
         </div>
+
+        <button className="suggest-btn" onClick={suggest} disabled={suggesting}>
+          {suggesting ? 'Analysing your résumé…' : '✨  Suggest companies from my résumé'}
+        </button>
 
         {suggestions && suggestions.length > 0 && (
           <div className="suggestions">
