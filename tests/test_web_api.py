@@ -434,6 +434,32 @@ def test_set_result_status(client, tmp_path):
     assert c.put("/api/results/status", json={"url": "nope", "status": "applied"}).status_code == 404
 
 
+def test_rescore_status_and_run(client, monkeypatch):
+    import subprocess
+    c, tmp = client
+    (tmp / "state" / "rescore_queue.json").write_text(json.dumps([{"url": "u1"}, {"url": "u2"}]))
+    (tmp / "config.json").write_text(json.dumps({"candidate": {"resume_path": "resume/r.md"}}))
+    c.put("/api/resume", json={"content": "resume"})
+    assert c.get("/api/rescore").json() == {"queued": 2}
+
+    class _Proc:
+        returncode = 0
+        stdout = 'Rescoring...\nRESCORE_SUMMARY {"attempted": 2, "recovered": 1, "gave_up": 0, "remaining": 1}\nRecovered 1.\n'
+        stderr = ""
+
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: _Proc())
+    r = c.post("/api/rescore")
+    assert r.status_code == 200
+    assert r.json() == {"attempted": 2, "recovered": 1, "gave_up": 0, "remaining": 1}
+
+
+def test_rescore_requires_resume_and_conflicts_with_scan(client, monkeypatch):
+    c, _ = client
+    assert c.post("/api/rescore").status_code == 400  # no resume
+    monkeypatch.setattr(type(runner), "running", property(lambda self: True))
+    assert c.post("/api/rescore").status_code == 409
+
+
 def test_status_survives_and_delete_persists_in_results_json(client):
     c, tmp = client
     (tmp / "state" / "results.json").write_text(json.dumps([

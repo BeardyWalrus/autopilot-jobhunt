@@ -37,6 +37,10 @@ def seen_jobs_path() -> Path:
     return project_dir() / "state" / "seen_jobs.json"
 
 
+def rescore_queue_path() -> Path:
+    return project_dir() / "state" / "rescore_queue.json"
+
+
 def default_resume_path() -> Path:
     return project_dir() / "resume" / "YOUR_RESUME.md"
 

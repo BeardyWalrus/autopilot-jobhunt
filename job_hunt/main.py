@@ -46,7 +46,7 @@ def _use_env(val: str | None) -> bool:
     return not _is_placeholder(val)
 
 
-def load_config() -> dict:
+def load_config(require_tinyfish: bool = True) -> dict:
     load_dotenv(dotenv_path=Path(".env"), override=True)
     p = Path("config.json")
     if not p.exists():
@@ -76,7 +76,7 @@ def load_config() -> dict:
                 config[config_key] = val
 
     tinyfish_key = config.get("tinyfish_api_key", "")
-    if not tinyfish_key or _is_placeholder(tinyfish_key):
+    if require_tinyfish and (not tinyfish_key or _is_placeholder(tinyfish_key)):
         sys.exit(
             "TINYFISH_API_KEY not set.\n"
             "Add it to your .env file: TINYFISH_API_KEY=sk-tinyfish-...\n"
@@ -256,6 +256,23 @@ def main() -> None:
         run_server(sys.argv[2:])
         return
 
+    # rescore only re-scores queued jobs with the LLM — no TinyFish job discovery.
+    if cmd == "rescore":
+        config = load_config(require_tinyfish=False)
+        from job_hunt.scanner import rescore_queued
+        resume_path = Path(config.get("candidate", {}).get("resume_path", "resume/YOUR_RESUME.md"))
+        if not resume_path.exists():
+            sys.exit(f"No resume found at {resume_path}. Add your resume first.")
+        summary = rescore_queued(config, resume_path.read_text())
+        # Machine-readable line for the web endpoint to parse, then a human summary.
+        print("RESCORE_SUMMARY " + json.dumps(summary))
+        if not summary["attempted"]:
+            print("Rescore queue is empty — nothing to do.")
+        else:
+            print(f"Recovered {summary['recovered']}, gave up {summary['gave_up']}, "
+                  f"still queued {summary['remaining']}.")
+        return
+
     # export reads local scan state only — no API keys needed, so skip load_config()
     if cmd == "export":
         min_score, days = _parse_export_args(sys.argv)
@@ -311,7 +328,7 @@ def main() -> None:
     else:
         sys.exit(
             f"Unknown command: {cmd}\n"
-            "Use: init | scan | draft | suggest | review-companies | export | mcp | web"
+            "Use: init | scan | rescore | draft | suggest | review-companies | export | mcp | web"
         )
 
 

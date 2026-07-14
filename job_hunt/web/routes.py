@@ -5,6 +5,8 @@ the UI read and write the same config.json / companies.json / resume / state.
 """
 import json
 import queue
+import subprocess
+import sys
 from importlib import resources
 from typing import Any
 
@@ -496,6 +498,46 @@ def clear_results() -> dict:
     before = len(_read_results())
     _write_results([])
     return {"removed": before, "count": 0}
+
+
+# --- rescore queue ------------------------------------------------------------
+
+@router.get("/rescore")
+def rescore_status() -> dict:
+    """How many jobs are waiting to be re-scored (their scoring failed earlier)."""
+    q = _read_json(paths.rescore_queue_path(), [])
+    return {"queued": len(q) if isinstance(q, list) else 0}
+
+
+@router.post("/rescore")
+def rescore_run() -> dict:
+    """Retry scoring the queued jobs now. Runs `autopilot rescore` as a subprocess
+    in the project dir (so the scanner's state files resolve), and returns the
+    recovered / gave-up / remaining counts."""
+    if runner.running:
+        raise HTTPException(409, "A scan is running — it rescores the queue automatically; wait for it.")
+    cfg = _read_json(paths.config_path(), {})
+    _resume_or_400(cfg)  # 400 if no resume yet
+    from job_hunt.web.scan_runner import _subprocess_env
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-m", "job_hunt.main", "rescore"],
+            cwd=str(paths.project_dir()), env=_subprocess_env(),
+            capture_output=True, text=True, timeout=1800,
+        )
+    except subprocess.TimeoutExpired:
+        raise HTTPException(504, "Rescore timed out after 30 min.")
+    if proc.returncode != 0:
+        detail = (proc.stderr.strip() or proc.stdout.strip())[:300]
+        raise HTTPException(500, f"Rescore failed: {detail}")
+    summary = {"attempted": 0, "recovered": 0, "gave_up": 0, "remaining": 0}
+    for line in proc.stdout.splitlines():
+        if line.startswith("RESCORE_SUMMARY "):
+            try:
+                summary = json.loads(line[len("RESCORE_SUMMARY "):])
+            except json.JSONDecodeError:
+                pass
+    return summary
 
 
 @router.get("/results/history")

@@ -6,6 +6,7 @@ AI job agent: scans 130+ company careers pages nightly, scores every role agains
 
 ```bash
 autopilot scan              # discover jobs, score with LLM, send Telegram notification
+autopilot rescore           # retry scoring jobs whose LLM scoring failed (queued)
 autopilot draft 1           # draft cover letter + resume for job #1 from last scan
 autopilot draft https://... # draft for a specific job URL
 autopilot export            # export last scan to CSV
@@ -134,5 +135,7 @@ MCP tools exposed: `scan_jobs`, `draft_application(job_ref)`, `export_jobs(min_s
 ## State files (gitignored)
 
 - `state/last_scan.json` — job results from the most recent scan
+- `state/results.json` — cumulative web-UI results (persist across scans, with applied/not-a-fit status)
+- `state/rescore_queue.json` — jobs whose LLM scoring failed, awaiting retry (auto-drained at scan start, or `autopilot rescore`)
 - `output/` — drafted cover letters and resume files
 - `scan.log` — scan activity log (when using cron)

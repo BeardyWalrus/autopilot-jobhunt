@@ -59,6 +59,8 @@ export const api = {
     req('/results/status', { method: 'PUT', body: JSON.stringify({ url, status }) }),
   deleteResult: (url) => req('/results', { method: 'DELETE', body: JSON.stringify({ url }) }),
   clearResults: () => req('/results/all', { method: 'DELETE' }),
+  rescoreStatus: () => req('/rescore'),
+  rescoreRun: () => req('/rescore', { method: 'POST' }),
 
   getSchedule: () => req('/schedule'),
   putSchedule: (enabled, time) =>
