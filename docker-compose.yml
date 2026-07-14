@@ -1,0 +1,23 @@
+# autopilot-jobhunt web UI.
+#
+#   docker compose up --build
+#   open http://127.0.0.1:8000
+#
+# Project files (config.json, companies.json, resume/, state/, output/) live in
+# ./data on the host and are seeded automatically on first run.
+#
+# The port is published on all interfaces (0.0.0.0) so the UI is reachable from
+# other machines on your network. There is NO authentication — for local-only
+# access instead, change the mapping to "127.0.0.1:8000:8000".
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    image: autopilot-jobhunt-web
+    container_name: autopilot-jobhunt-web
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/data
+    restart: unless-stopped

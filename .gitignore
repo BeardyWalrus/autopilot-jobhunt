@@ -32,6 +32,11 @@ demo/*.mov
 .idea/
 .vscode/
 
+# Web UI — node deps and the built SPA bundle (Docker/npm build produces it)
+frontend/node_modules/
+frontend/dist/
+job_hunt/web/static/
+
 # Tool caches / coverage artifacts
 .coverage
 .ruff_cache/

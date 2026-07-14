@@ -13,6 +13,9 @@ autopilot export --min 70   # export only jobs with score >= 70
 autopilot export --days 7   # export jobs from the past 7 days
 
 python -m job_hunt.mcp_server  # start the MCP server (Claude Code / Claude Desktop)
+
+autopilot web               # launch the web UI at http://127.0.0.1:8000
+docker compose up --build   # run the web UI in Docker (recommended)
 ```
 
 ## Config files
@@ -35,7 +38,33 @@ job_hunt/
   tools.py      — protocol-agnostic tool layer (wraps scanner/drafter/exporter)
   mcp_server.py — FastMCP server exposing scan_jobs, draft_application, export_jobs
   main.py       — CLI entry point (autopilot command)
+  web/          — FastAPI web UI backend (routes, scan runner, scheduler)
+
+frontend/       — React + Vite SPA (built into job_hunt/web/static)
 ```
+
+## Web UI
+
+A FastAPI + React app to manage config, job boards, resume, and scans from a browser.
+
+```bash
+docker compose up --build   # recommended — open http://127.0.0.1:8000
+```
+
+Docker seeds `./data` (config.json, companies.json, resume/, state/, output/) on
+first run; edit everything from the **Settings**, **Job Boards**, and **Resume**
+tabs. The **Scan & Results** tab runs a scan with a live streamed log and shows
+scored jobs. Scans can also run on a daily schedule (Settings → Schedule).
+
+- **Bind:** binds `0.0.0.0:8000` by default — reachable from other machines on
+  your network. There is **no authentication**, so it exposes your config
+  (including API keys) to anyone who can reach the host. For local-only access,
+  run `autopilot web --host 127.0.0.1` (or map `127.0.0.1:8000:8000` in compose).
+- **Run from source (no Docker):** `pip install -e '.[web]'`, then
+  `cd frontend && npm install && npm run build`, then `autopilot web`.
+  The SPA bundle (`job_hunt/web/static/`) is gitignored — build it or use Docker.
+- **Scans** run as a subprocess of `autopilot scan`, so the live log is the same
+  output the CLI produces and **Stop** actually terminates the run.
 
 ## Rate limits (free tier)
 
