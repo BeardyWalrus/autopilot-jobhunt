@@ -174,7 +174,7 @@ export default function Boards() {
     setJobRunning(true)
     try {
       if (kind === 'suggest') await api.suggestStart(8)
-      else await api.reviewStart()
+      else await api.reviewStart(showDisabled)  // only review boards currently visible
     } catch (e) {
       setJobRunning(false)
       setJobLog(null)
