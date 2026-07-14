@@ -9,6 +9,12 @@ reconstructed from git history.
 
 ## [Unreleased]
 
+### Changed
+- **Docker image now publishes at release time only.** The GHCR `:latest` image is
+  pushed on a `v*` tag or a manual **Run workflow**, not on every merge to `main`.
+  PRs still build the image to verify it, but don't push. This lets several changes
+  accumulate on `main` and ship together when a release is cut.
+
 ## [0.12.1] — 2026-07-14
 
 ### Fixed
