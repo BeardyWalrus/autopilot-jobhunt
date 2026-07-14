@@ -374,7 +374,11 @@ def scan_seen_set(urls: list = Body(..., embed=True)) -> dict:
     before = len(_read_seen_urls())
     # De-dup while preserving order.
     seen: set = set()
-    cleaned = [u for u in urls if not (u in seen or seen.add(u))]
+    cleaned = []
+    for u in urls:
+        if u not in seen:
+            seen.add(u)
+            cleaned.append(u)
     _write_seen_urls(cleaned)
     return {"seen": len(cleaned), "removed": max(0, before - len(cleaned))}
 
