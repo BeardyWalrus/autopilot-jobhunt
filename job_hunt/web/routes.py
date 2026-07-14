@@ -12,6 +12,7 @@ from fastapi import APIRouter, Body, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
 from job_hunt.web import paths
+from job_hunt.web.job_runner import runner as jobs
 from job_hunt.web.scan_runner import runner
 from job_hunt.web.scheduler import read_schedule, scheduler, write_schedule
 
@@ -125,41 +126,82 @@ def add_company(company: dict = Body(...)) -> dict:
     return {"companies": companies, "count": len(companies)}
 
 
+def _resume_or_400(cfg: dict) -> str:
+    rpath = paths.resume_path(cfg)
+    resume = rpath.read_text(encoding="utf-8") if rpath.exists() else ""
+    if not resume.strip():
+        raise HTTPException(400, "No resume found — add one on the Resume tab first.")
+    return resume
+
+
 @router.post("/companies/suggest")
-def suggest(count: int = Body(8, embed=True)) -> dict:
+def suggest_start(count: int = Body(8, embed=True)) -> dict:
+    """Start a background suggestion job. Poll /companies/jobs/result for the
+    outcome and watch /companies/jobs/stream for the live log."""
     from job_hunt.suggester import suggest_companies
 
     cfg = _read_json(paths.config_path(), {})
-    rpath = paths.resume_path(cfg)
-    resume = rpath.read_text(encoding="utf-8") if rpath.exists() else ""
-    if not resume.strip():
-        raise HTTPException(400, "No resume found — add one on the Resume tab first.")
+    resume = _resume_or_400(cfg)
     existing = _read_json(paths.companies_path(), [])
-    count = max(1, min(20, count))
+    n = max(1, min(20, count))
+
+    def job():
+        return {"kind": "suggest", "suggestions": suggest_companies(cfg, resume, existing, n)}
+
     try:
-        suggestions = suggest_companies(cfg, resume, existing, count)
-    except Exception as e:
-        raise HTTPException(502, f"Suggestion failed: {e}")
-    return {"suggestions": suggestions, "count": len(suggestions)}
+        jobs.start("suggest", job)
+    except RuntimeError as e:
+        raise HTTPException(409, str(e))
+    return jobs.status()
 
 
 @router.post("/companies/review")
-def review() -> dict:
+def review_start() -> dict:
+    """Start a background review job (see /companies/jobs/* for stream + result)."""
     from job_hunt.suggester import review_companies
 
     cfg = _read_json(paths.config_path(), {})
-    rpath = paths.resume_path(cfg)
-    resume = rpath.read_text(encoding="utf-8") if rpath.exists() else ""
-    if not resume.strip():
-        raise HTTPException(400, "No resume found — add one on the Resume tab first.")
+    resume = _resume_or_400(cfg)
     companies = _read_json(paths.companies_path(), [])
-    if not companies:
-        return {"flagged": [], "count": 0, "reviewed": 0}
+
+    def job():
+        flagged = review_companies(cfg, resume, companies) if companies else []
+        return {"kind": "review", "flagged": flagged, "reviewed": len(companies)}
+
     try:
-        flagged = review_companies(cfg, resume, companies)
-    except Exception as e:
-        raise HTTPException(502, f"Review failed: {e}")
-    return {"flagged": flagged, "count": len(flagged), "reviewed": len(companies)}
+        jobs.start("review", job)
+    except RuntimeError as e:
+        raise HTTPException(409, str(e))
+    return jobs.status()
+
+
+@router.get("/companies/jobs/result")
+def jobs_result() -> dict:
+    return {**jobs.status(), "result": jobs.result}
+
+
+@router.get("/companies/jobs/stream")
+def jobs_stream() -> StreamingResponse:
+    def event_stream():
+        q = jobs.subscribe()
+        try:
+            while True:
+                try:
+                    item = q.get(timeout=1.0)
+                except queue.Empty:
+                    if not jobs.running:
+                        yield "event: end\ndata: done\n\n"
+                        break
+                    yield ": keep-alive\n\n"
+                    continue
+                if item is None:
+                    yield "event: end\ndata: done\n\n"
+                    break
+                yield f"data: {item}\n\n"
+        finally:
+            jobs.unsubscribe(q)
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 @router.delete("/companies/{index}")

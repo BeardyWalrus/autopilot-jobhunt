@@ -27,9 +27,10 @@ export const api = {
   getCompanies: () => req('/companies'),
   putCompanies: (companies) => req('/companies', { method: 'PUT', body: JSON.stringify(companies) }),
   addCompany: (company) => req('/companies', { method: 'POST', body: JSON.stringify(company) }),
-  suggestCompanies: (count = 8) =>
+  suggestStart: (count = 8) =>
     req('/companies/suggest', { method: 'POST', body: JSON.stringify({ count }) }),
-  reviewCompanies: () => req('/companies/review', { method: 'POST', body: '{}' }),
+  reviewStart: () => req('/companies/review', { method: 'POST', body: '{}' }),
+  jobsResult: () => req('/companies/jobs/result'),
 
   getResume: () => req('/resume'),
   putResume: (content) => req('/resume', { method: 'PUT', body: JSON.stringify({ content }) }),

@@ -1,5 +1,6 @@
 """Web API — FastAPI TestClient over a temp project dir. No real scans/network."""
 import json
+import time
 
 import pytest
 
@@ -93,7 +94,17 @@ def test_company_validation_rejects_missing_fields(client):
     assert r.status_code == 400 and "careers_url" in r.json()["detail"]
 
 
-def test_suggest_endpoint(client, monkeypatch):
+def _wait_job(c, timeout=5.0):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        r = c.get("/api/companies/jobs/result").json()
+        if r["done"]:
+            return r
+        time.sleep(0.02)
+    raise AssertionError("job did not finish in time")
+
+
+def test_suggest_job(client, monkeypatch):
     c, tmp = client
     c.put("/api/config", json={"candidate": {"resume_path": "resume/r.md"}})
     c.put("/api/resume", json={"content": "Senior ML engineer"})
@@ -104,18 +115,19 @@ def test_suggest_endpoint(client, monkeypatch):
              "search_domain": "cohere.com", "location": "Toronto", "region": "NA",
              "reason": "NLP", "exists": False}],
     )
-    r = c.post("/api/companies/suggest", json={"count": 5})
-    assert r.status_code == 200 and r.json()["count"] == 1
-    assert r.json()["suggestions"][0]["name"] == "Cohere"
+    assert c.post("/api/companies/suggest", json={"count": 5}).status_code == 200
+    r = _wait_job(c)
+    assert r["ok"] is True and r["result"]["kind"] == "suggest"
+    assert r["result"]["suggestions"][0]["name"] == "Cohere"
 
 
-def test_suggest_endpoint_requires_resume(client):
+def test_suggest_requires_resume(client):
     c, _ = client
     r = c.post("/api/companies/suggest", json={"count": 5})
     assert r.status_code == 400 and "resume" in r.json()["detail"].lower()
 
 
-def test_review_endpoint(client, monkeypatch):
+def test_review_job(client, monkeypatch):
     c, tmp = client
     c.put("/api/config", json={"candidate": {"resume_path": "resume/r.md"}})
     c.put("/api/resume", json={"content": "Senior ML engineer"})
@@ -127,15 +139,30 @@ def test_review_endpoint(client, monkeypatch):
         lambda cfg, resume, companies: [
             {"index": 0, "name": "Acme Bank", "search_domain": "acmebank.com", "reason": "finance"}],
     )
-    r = c.post("/api/companies/review")
-    assert r.status_code == 200 and r.json()["count"] == 1
-    assert r.json()["flagged"][0]["name"] == "Acme Bank" and r.json()["reviewed"] == 1
+    assert c.post("/api/companies/review").status_code == 200
+    r = _wait_job(c)
+    assert r["ok"] is True and r["result"]["kind"] == "review"
+    assert r["result"]["flagged"][0]["name"] == "Acme Bank" and r["result"]["reviewed"] == 1
 
 
-def test_review_endpoint_requires_resume(client):
+def test_review_requires_resume(client):
     c, _ = client
     r = c.post("/api/companies/review")
     assert r.status_code == 400 and "resume" in r.json()["detail"].lower()
+
+
+def test_job_reports_failure_inline(client, monkeypatch):
+    c, _ = client
+    c.put("/api/config", json={"candidate": {"resume_path": "resume/r.md"}})
+    c.put("/api/resume", json={"content": "resume"})
+
+    def boom(cfg, resume, existing, count):
+        raise RuntimeError("LLM unreachable")
+
+    monkeypatch.setattr("job_hunt.suggester.suggest_companies", boom)
+    assert c.post("/api/companies/suggest", json={"count": 3}).status_code == 200
+    r = _wait_job(c)
+    assert r["ok"] is False and "LLM unreachable" in r["error"]
 
 
 def test_company_enabled_flag_preserved(client):

@@ -119,6 +119,8 @@ td.url { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-spac
 .review-btn { background: rgba(224, 179, 65, 0.1); border-color: var(--mid); color: var(--mid); }
 .review-btn:hover:not(:disabled) { background: rgba(224, 179, 65, 0.18); }
 .suggestions.flagged { border-color: rgba(224, 179, 65, 0.4); }
+.joblog-wrap { margin-top: 12px; }
+.joblog { height: 160px; margin-top: 4px; }
 
 @media (max-width: 640px) { .board-actions { flex-direction: column; } }
 
