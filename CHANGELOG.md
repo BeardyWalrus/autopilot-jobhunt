@@ -17,6 +17,14 @@ reconstructed from git history.
   banner on the Scan tab (`GET`/`POST /api/rescore`). Jobs that keep failing after 3
   attempts are saved unscored so they're never lost.
 
+### Fixed
+- **Scan progress stays visible even when SSE is blocked.** Some setups (a reverse
+  proxy / tunnel in front of the web UI) drop the live-log connection during long
+  Ollama scoring, so the scan looked frozen until a manual refresh even though it was
+  running fine. The Scan tab now also **polls the log + results every 8s while a scan
+  runs**, independent of the SSE stream, so progress shows throughout regardless of
+  the connection.
+
 ## [0.13.0] — 2026-07-14
 
 ### Added

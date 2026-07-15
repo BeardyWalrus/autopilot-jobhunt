@@ -179,13 +179,18 @@ export default function Scan() {
         if (!s.running) finishStream(es)
       } catch { /* transient — keep the EventSource open to retry */ }
     }
-    // Backstop: if SSE gets wedged, still notice completion within ~15s.
+    // Safety net for environments where a proxy blocks or drops SSE: poll the
+    // server every 8s while running and refresh the log + results directly, so
+    // progress is visible even if no SSE event ever arrives. scanLogs returns the
+    // full buffer, so replacing `lines` can't duplicate what SSE already appended.
     pollRef.current = setInterval(async () => {
       try {
         const s = await api.scanStatus()
-        if (!s.running) finishStream(es)
-      } catch { /* ignore */ }
-    }, 15000)
+        if (!s.running) { finishStream(es); return }
+        api.scanLogs().then((r) => { if (r.lines?.length) setLines(r.lines) }).catch(() => {})
+        loadResults()
+      } catch { /* ignore a transient blip; try again next tick */ }
+    }, 8000)
   }
 
   async function setStatus(job, status) {
