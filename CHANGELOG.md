@@ -9,6 +9,8 @@ reconstructed from git history.
 
 ## [Unreleased]
 
+## [0.14.0] — 2026-07-15
+
 ### Added
 - **Rescore queue for failed scoring.** When a batch's LLM scoring fails (parse
   error, model down, quota), those jobs are now queued in `state/rescore_queue.json`
