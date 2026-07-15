@@ -9,6 +9,13 @@ reconstructed from git history.
 
 ## [Unreleased]
 
+### Changed
+- **Resume tab renders your résumé as formatted Markdown** by default (headings,
+  bold/italic, bullet + numbered lists, inline code, links), with an **Edit** button
+  that opens the raw-Markdown editor (Save / Cancel). No more staring at a plain
+  textarea just to read it. Rendered with a tiny built-in Markdown parser — no new
+  dependencies, and no HTML injection (it renders to React elements, not raw HTML).
+
 ## [0.14.0] — 2026-07-15
 
 ### Added
