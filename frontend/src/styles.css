@@ -202,6 +202,19 @@ tr.disabled td:first-child { text-decoration: none; }
 .add-provider { margin-top: 12px; }
 .add-provider select { max-width: 260px; }
 
+.md-view { line-height: 1.6; }
+.md-view > :first-child { margin-top: 0; }
+.md-view h1 { font-size: 22px; margin: 6px 0 10px; }
+.md-view h2 { font-size: 17px; margin: 18px 0 8px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+.md-view h3 { font-size: 14px; margin: 14px 0 6px; color: var(--muted); text-transform: none; }
+.md-view p { margin: 8px 0; }
+.md-view ul, .md-view ol { margin: 8px 0; padding-left: 22px; }
+.md-view li { margin: 3px 0; }
+.md-view a { color: var(--accent); }
+.md-view code { background: var(--panel-2); padding: 1px 5px; border-radius: 4px; font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 12.5px; }
+.md-view hr { border: 0; border-top: 1px solid var(--border); margin: 16px 0; }
+.md-view strong { color: var(--text); font-weight: 700; }
+
 .about .kv { display: flex; justify-content: space-between; gap: 16px; padding: 6px 0; border-bottom: 1px solid var(--border); }
 .about .kv:last-child { border-bottom: 0; }
 .mono { font-family: 'SF Mono', Menlo, Consolas, monospace; }
