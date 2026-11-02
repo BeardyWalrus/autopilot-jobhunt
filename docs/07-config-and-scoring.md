@@ -18,7 +18,7 @@ The scoring quality depends on this section — the LLM reads it plus your full 
 {
   "tinyfish_api_key": "sk-tinyfish-...",
   "openrouter_api_key": "sk-or-v1-...",
-  "llm_provider": "claude_agent_sdk",
+  "llm_provider": "openrouter",
   "candidate": {
     "name": "Your Name",                        // appears in drafted cover letters
     "resume_path": "resume/YOUR_RESUME.md",     // your resume (Markdown)
@@ -76,7 +76,7 @@ Tune `min_score` up if you get too many marginal matches, down if you get too fe
 
 ## Provider selection
 
-Set `llm_provider` to `claude_agent_sdk` (default), `openrouter`, `claude_cli`, or `anthropic` — see
+Set `llm_provider` to `openrouter` (default), `ollama`, `claude_agent_sdk`, `claude_cli`, or `anthropic` — see
 [02 — LLM providers](02-providers.md) for each backend's keys and models. Override at
 runtime without editing config: `LLM_PROVIDER=claude_cli autopilot scan`.
 

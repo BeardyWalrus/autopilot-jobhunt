@@ -96,16 +96,66 @@ def test_chat_with_llm_routes_claude_agent_sdk(monkeypatch):
     assert llm_utils.chat_with_llm({"llm_provider": "claude_agent_sdk"}, []) == "SDK"
 
 
-def test_legacy_ollama_provider_routes_to_agent_sdk(monkeypatch):
-    monkeypatch.setattr(llm_utils, "_chat_with_claude_agent_sdk", lambda *a, **k: "SDK")
-    monkeypatch.setattr(llm_utils, "_warned_aliases", set())
-    assert llm_utils.chat_with_llm({"llm_provider": "ollama"}, []) == "SDK"
-    assert llm_utils.resolve_provider({"llm_provider": "ollama"}) == "claude_agent_sdk"
+def test_chat_with_llm_routes_ollama(monkeypatch):
+    monkeypatch.setattr(llm_utils, "_chat_with_ollama", lambda *a, **k: "OLL")
+    assert llm_utils.chat_with_llm({"llm_provider": "ollama"}, []) == "OLL"
 
 
-def test_resolve_provider_defaults_to_agent_sdk():
-    assert llm_utils.resolve_provider({}) == "claude_agent_sdk"
-    assert llm_utils.resolve_provider({"llm_provider": "anthropic"}) == "anthropic"
+# --- Ollama -------------------------------------------------------------------
+
+def test_make_ollama_client_defaults(monkeypatch):
+    monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
+    client = llm_utils._make_ollama_client({})
+    assert str(client.base_url).rstrip("/") == "http://localhost:11434/v1"
+
+
+def test_make_ollama_client_custom_base_url():
+    client = llm_utils._make_ollama_client({"ollama_base_url": "http://box:11434/v1"})
+    assert str(client.base_url).rstrip("/") == "http://box:11434/v1"
+
+
+def test_chat_with_ollama_success(monkeypatch):
+    fake = _client(lambda **k: _Resp("local answer"))
+    fake.base_url = "http://localhost:11434/v1"
+    monkeypatch.setattr(llm_utils, "_make_ollama_client", lambda cfg: fake)
+    out = llm_utils._chat_with_ollama({"ollama_model": "llama3.1"},
+                                      [{"role": "user", "content": "hi"}], 0.1, 100)
+    assert out == "local answer"
+
+
+def test_list_ollama_models_sorted(monkeypatch):
+    class FakeModels:
+        def list(self):
+            return types.SimpleNamespace(data=[
+                types.SimpleNamespace(id="qwen2.5:7b"), types.SimpleNamespace(id="llama3.1:latest")])
+
+    monkeypatch.setattr(llm_utils, "OpenAI", lambda **k: types.SimpleNamespace(models=FakeModels()))
+    assert llm_utils.list_ollama_models(base_url="http://x/v1") == ["llama3.1:latest", "qwen2.5:7b"]
+
+
+def test_list_ollama_models_unreachable(monkeypatch):
+    from openai import APIConnectionError
+
+    class FakeModels:
+        def list(self):
+            raise APIConnectionError.__new__(APIConnectionError)
+
+    monkeypatch.setattr(llm_utils, "OpenAI", lambda **k: types.SimpleNamespace(models=FakeModels()))
+    with pytest.raises(RuntimeError, match="Could not reach Ollama"):
+        llm_utils.list_ollama_models(base_url="http://x/v1")
+
+
+def test_chat_with_ollama_connection_refused(monkeypatch):
+    from openai import APIConnectionError
+
+    def create(**k):
+        raise APIConnectionError.__new__(APIConnectionError)
+
+    fake = _client(create)
+    fake.base_url = "http://localhost:11434/v1"
+    monkeypatch.setattr(llm_utils, "_make_ollama_client", lambda cfg: fake)
+    with pytest.raises(RuntimeError, match="Could not reach Ollama"):
+        llm_utils._chat_with_ollama({}, [{"role": "user", "content": "x"}], 0.1, 100)
 
 
 # --- Claude Agent SDK -------------------------------------------------------
@@ -198,7 +248,7 @@ def test_agent_sdk_model_effort_and_env_key(monkeypatch):
 def test_agent_sdk_missing_key(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     _fake_sdk(monkeypatch, _reply("x"))
-    with pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY not set"):
+    with pytest.raises(RuntimeError, match="No Anthropic API key"):
         llm_utils._chat_with_claude_agent_sdk({}, [{"role": "user", "content": "x"}], 0.1, 100)
 
 
@@ -263,6 +313,14 @@ def _stream_client(deltas):
     fake = _client(create)
     fake.base_url = "http://x/v1"
     return fake
+
+
+def test_ollama_streams_tokens(monkeypatch):
+    monkeypatch.setattr(llm_utils, "_make_ollama_client", lambda cfg: _stream_client(["Hello", " ", "world"]))
+    got = []
+    out = llm_utils._chat_with_ollama({"ollama_model": "m"}, [{"role": "user", "content": "hi"}],
+                                      0.1, 100, on_token=got.append)
+    assert out == "Hello world" and got == ["Hello", " ", "world"]
 
 
 def test_openrouter_streams_tokens():

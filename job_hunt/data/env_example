@@ -1,16 +1,26 @@
 # TinyFish API — get yours at https://agent.tinyfish.ai
 TINYFISH_API_KEY="your_tinyfish_api_key_here"
 
-# OpenRouter API (optional — set llm_provider=openrouter) — free tier at https://openrouter.ai
+# OpenRouter API — free tier available at https://openrouter.ai
 OPENROUTER_API_KEY="your_openrouter_api_key_here"
 OPENROUTER_MODEL="meta-llama/llama-3.3-70b-instruct:free"
 OPENROUTER_FALLBACK_MODELS="nvidia/nemotron-3-super-120b-a12b:free,google/gemma-4-31b-it:free,qwen/qwen3-coder:free"
 
-# Claude via the Claude Agent SDK (default provider: llm_provider=claude_agent_sdk)
-# Required for claude_agent_sdk (also used by llm_provider=anthropic).
-# Get a key at https://console.anthropic.com
-ANTHROPIC_API_KEY="your_anthropic_api_key_here"
-# CLAUDE_AGENT_SDK_MODEL="claude-opus-5-5"   # default; any Claude model ID works
+# Anthropic / Claude (optional — alternative to OpenRouter)
+# Set llm_provider=anthropic in config.json to use Claude instead of OpenRouter
+# ANTHROPIC_API_KEY="your_anthropic_api_key_here"
+
+# Ollama (optional — run models locally, no API key, no rate limits)
+# Set llm_provider=ollama in config.json (or LLM_PROVIDER=ollama below).
+# Start it with 'ollama serve' and pull a model with 'ollama pull llama3.1'.
+# OLLAMA_BASE_URL="http://localhost:11434/v1"
+# OLLAMA_MODEL="llama3.1"
+
+# Claude via the Claude Agent SDK (optional — set llm_provider=claude_agent_sdk)
+# Easiest: pick "Claude (Agent SDK)" on the web UI's Settings page and paste your key
+# there. Or set it here (used when no key is saved in Settings):
+# ANTHROPIC_API_KEY="your_anthropic_api_key_here"
+# CLAUDE_AGENT_SDK_MODEL="claude-opus-5-5"
 
 # Telegram Notification (optional — create bot via @BotFather)
 TELEGRAM_TOKEN="your_telegram_bot_token_here"

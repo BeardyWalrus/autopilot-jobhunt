@@ -9,15 +9,17 @@ reconstructed from git history.
 
 ## [Unreleased]
 
+### Added
+- **Claude Agent SDK provider** (`"llm_provider": "claude_agent_sdk"`). Scoring,
+  drafting and suggestions can run on Claude (`claude-opus-5-5` by default, set
+  `claude_agent_sdk_model`) through `claude-agent-sdk`, now a core dependency. Pick
+  **Claude (Agent SDK)** on the Settings page and paste an Anthropic API key there; it's
+  saved server-side in `config.json` and only returned masked by `GET /api/config`
+  (`ANTHROPIC_API_KEY` works as a fallback). Calls are plain one-shot prompts with no
+  tools, MCP servers or local Claude settings. Existing providers, Ollama included, are
+  unchanged.
+
 ### Changed
-- **Claude Agent SDK replaces Ollama, and is the new default LLM provider**
-  (`"llm_provider": "claude_agent_sdk"`). Scoring, drafting and suggestions run on
-  Claude (`claude-opus-5-5` by default, set `claude_agent_sdk_model`) through
-  `claude-agent-sdk`, now a core dependency. Needs `ANTHROPIC_API_KEY`. Calls are plain
-  one-shot prompts with no tools, MCP servers or local Claude settings. Configs still
-  set to `"ollama"` are routed to the Agent SDK with a warning; the Ollama provider,
-  its `ollama_*` settings and `POST /api/ollama/test` are removed. The Settings page
-  shows a "Claude (Agent SDK)" card in place of Ollama.
 - `mcp` pinned below 2.0 (mcp 2.x renamed FastMCP, which broke the MCP server on fresh
   installs).
 - **Resume tab renders your résumé as formatted Markdown** by default (headings,

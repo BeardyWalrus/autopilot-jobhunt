@@ -38,7 +38,7 @@ def _config_template() -> dict:
         text = resources.files("job_hunt.data").joinpath("config.example.json").read_text()
         return json.loads(text)
     except Exception:
-        return {"llm_provider": "claude_agent_sdk", "candidate": {}}
+        return {"llm_provider": "openrouter", "candidate": {}}
 
 
 # --- health -------------------------------------------------------------------
@@ -55,20 +55,63 @@ def health() -> dict:
 
 # --- config -------------------------------------------------------------------
 
+# Secrets the settings page can set but never reads back in full. GET returns a
+# masked placeholder; a PUT that sends the placeholder back keeps the stored key.
+_MASKED_KEYS = ("claude_agent_sdk_api_key",)
+_MASK_PREFIX = "••••••••"
+
+
+def _mask(val: Any) -> Any:
+    if not isinstance(val, str) or not val:
+        return val
+    return _MASK_PREFIX + (val[-4:] if len(val) > 8 else "")
+
+
+def _masked(cfg: dict) -> dict:
+    out = dict(cfg)
+    for k in _MASKED_KEYS:
+        if out.get(k):
+            out[k] = _mask(out[k])
+    return out
+
+
 @router.get("/config")
 def get_config() -> dict:
     cfg = _read_json(paths.config_path(), None)
     if cfg is None:
         return {"config": _config_template(), "exists": False}
-    return {"config": cfg, "exists": True}
+    return {"config": _masked(cfg), "exists": True}
 
 
 @router.put("/config")
 def put_config(config: dict = Body(...)) -> dict:
     if not isinstance(config, dict):
         raise HTTPException(400, "config must be a JSON object")
+    stored = _read_json(paths.config_path(), {}) or {}
+    for k in _MASKED_KEYS:
+        val = config.get(k)
+        if isinstance(val, str) and val.startswith(_MASK_PREFIX):
+            if stored.get(k):
+                config[k] = stored[k]  # unchanged placeholder — keep the real key
+            else:
+                config.pop(k, None)
     paths.config_path().write_text(json.dumps(config, indent=2))
-    return {"config": config, "exists": True}
+    return {"config": _masked(config), "exists": True}
+
+
+@router.post("/ollama/test")
+def ollama_test(base_url: str = Body("", embed=True)) -> dict:
+    """Ping the Ollama server and list its installed models. Returns ok/error
+    inline (200) so the settings page can show status without HTTP error handling."""
+    from job_hunt.llm_utils import list_ollama_models
+
+    cfg = _read_json(paths.config_path(), {}) or {}
+    url = base_url or cfg.get("ollama_base_url") or "http://localhost:11434/v1"
+    try:
+        models = list_ollama_models(base_url=url, config=cfg)
+    except Exception as e:
+        return {"ok": False, "error": str(e), "base_url": url, "models": []}
+    return {"ok": True, "models": models, "base_url": url}
 
 
 # --- companies ----------------------------------------------------------------

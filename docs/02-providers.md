@@ -4,34 +4,7 @@ The LLM scores each job against your resume and writes your drafts. Pick one bac
 via `llm_provider` in `config.json` (or `LLM_PROVIDER` in `.env`). Page **fetching**
 always uses TinyFish regardless — see [03 — API keys](03-api-keys.md).
 
-## Claude Agent SDK (default)
-
-Scores and drafts with Claude through the [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk/overview)
-(`claude-agent-sdk`, installed with autopilot — the wheel bundles the Claude Code CLI it
-drives, so there's nothing else to install). Each call is a plain one-shot prompt: no
-built-in tools, no MCP servers, and none of your `~/.claude` settings are loaded.
-
-Set one env var (in `.env`, or the container's environment):
-
-```bash
-ANTHROPIC_API_KEY=sk-ant-...      # https://console.anthropic.com
-```
-
-```json
-"llm_provider": "claude_agent_sdk",
-"claude_agent_sdk_model": "claude-opus-5-5",   // default; any Claude model id
-"claude_agent_sdk_effort": ""                  // optional: low / medium / high / xhigh / max
-```
-
-- **Key lookup order:** `claude_agent_sdk_api_key` in `config.json`, then
-  `anthropic_api_key`, then the `ANTHROPIC_API_KEY` env var.
-- **Cost:** billed to your Anthropic API account per token. A nightly scan makes ~10–30
-  calls; each call's cost is logged at debug level.
-- `temperature` and `max_tokens` aren't settable through the SDK and are ignored.
-- **Replaces Ollama.** The old `"llm_provider": "ollama"` value still works: it's routed
-  to the Agent SDK with a one-line warning. `ollama_*` settings are no longer read.
-
-## OpenRouter (free tier)
+## OpenRouter (default · free)
 
 Access to hosted models on a free tier. autopilot uses a **4-model fallback chain** —
 if the primary hits its daily free quota, the next is tried automatically:
@@ -82,6 +55,31 @@ Or per-run: `LLM_PROVIDER=claude_cli autopilot scan`.
 
 > `temperature` and `max_tokens` are not configurable with Claude CLI — the binary
 > doesn't expose them.
+
+## Claude Agent SDK
+
+Scores and drafts with Claude through the [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk/overview)
+(`claude-agent-sdk`, installed with autopilot — the wheel bundles the Claude Code CLI it
+drives, so there's nothing else to install). Each call is a plain one-shot prompt: no
+built-in tools, no MCP servers, and none of your `~/.claude` settings are loaded.
+
+**Web UI:** Settings → *Add a provider* → **Claude (Agent SDK)**, paste your Anthropic API
+key (from [console.anthropic.com](https://console.anthropic.com)), select it and Save. The
+key is stored in `config.json` on the server and only ever shown back masked.
+
+**Or in `config.json`:**
+
+```json
+"llm_provider": "claude_agent_sdk",
+"claude_agent_sdk_api_key": "sk-ant-...",
+"claude_agent_sdk_model": "claude-opus-5-5",   // default; any Claude model id
+"claude_agent_sdk_effort": ""                  // optional: low / medium / high / xhigh / max
+```
+
+- **Key lookup order:** `claude_agent_sdk_api_key` (Settings), then `anthropic_api_key`,
+  then the `ANTHROPIC_API_KEY` env var.
+- **Cost:** billed to your Anthropic API account per token (~10–30 calls per scan).
+- `temperature` and `max_tokens` aren't settable through the SDK and are ignored.
 
 ## Anthropic API
 

@@ -9,7 +9,7 @@ meant to be reviewed before being added to companies.json.
 """
 import re
 
-from job_hunt.llm_utils import chat_with_llm, resolve_provider
+from job_hunt.llm_utils import chat_with_llm
 from job_hunt.log import get_logger
 from job_hunt.scanner import _build_candidate_profile
 
@@ -121,7 +121,7 @@ def suggest_companies(
         count=count,
         avoid_clause=avoid_clause,
     )
-    provider = resolve_provider(config)
+    provider = config.get("llm_provider") or "openrouter"
     logger.info(f"Suggesting {count} companies from your resume via {provider}...")
     raw = chat_with_llm(config, messages=[{"role": "user", "content": prompt}],
                         temperature=0.4, on_token=on_token)
@@ -200,7 +200,7 @@ def review_companies(
     Reviews in batches so large lists stay within a small model's context.
     """
     profile = _build_candidate_profile(config)
-    provider = resolve_provider(config)
+    provider = config.get("llm_provider") or "openrouter"
     logger.info(f"Reviewing {len(companies)} companies against your resume via {provider}...")
     flagged: list[dict] = []
     for start in range(0, len(companies), batch_size):
@@ -273,7 +273,7 @@ def suggest_search_terms(config: dict, resume: str, on_token=None) -> dict:
     empty if the model didn't produce it; the caller lets the user edit before saving.
     """
     profile = _build_candidate_profile(config)
-    provider = resolve_provider(config)
+    provider = config.get("llm_provider") or "openrouter"
     logger.info(f"Suggesting job-search terms from your resume via {provider}...")
     prompt = SEARCH_TERMS_PROMPT.format(profile=profile, resume=resume[:3000])
     raw = chat_with_llm(config, messages=[{"role": "user", "content": prompt}],
@@ -320,7 +320,7 @@ def reconsider_companies(
     `companies` list. Reviews in batches like review_companies.
     """
     profile = _build_candidate_profile(config)
-    provider = resolve_provider(config)
+    provider = config.get("llm_provider") or "openrouter"
     logger.info(f"Reconsidering {len(companies)} disabled companies against your resume via {provider}...")
     recommended: list[dict] = []
     for start in range(0, len(companies), batch_size):

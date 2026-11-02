@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api.js'
 
-const PROVIDERS = ['claude_agent_sdk', 'openrouter', 'anthropic', 'claude_cli']
+const PROVIDERS = ['openrouter', 'ollama', 'claude_agent_sdk', 'anthropic', 'claude_cli']
 const LABELS = {
-  claude_agent_sdk: { name: 'Claude (Agent SDK)', note: 'Claude via the Agent SDK (requires API key)' },
   openrouter: { name: 'OpenRouter', note: 'hosted free tier + paid models' },
+  ollama: { name: 'Ollama', note: 'local — no key, no rate limits' },
+  claude_agent_sdk: { name: 'Claude (Agent SDK)', note: 'Claude via the Agent SDK (requires key)' },
   anthropic: { name: 'Anthropic', note: 'Claude API (requires key)' },
   claude_cli: { name: 'Claude Code CLI', note: 'uses your local claude auth' },
 }
@@ -12,13 +13,11 @@ const LABELS = {
 // "in use" (any value set) and to clear a provider when it's removed.
 const PROVIDER_KEYS = {
   openrouter: ['openrouter_model', 'openrouter_api_key', 'openrouter_fallback_models'],
+  ollama: ['ollama_model', 'ollama_base_url', 'ollama_api_key'],
   claude_agent_sdk: ['claude_agent_sdk_model', 'claude_agent_sdk_api_key', 'claude_agent_sdk_effort'],
   anthropic: ['anthropic_model', 'anthropic_api_key'],
   claude_cli: ['claude_cli_model'],
 }
-
-// Retired provider names, mapped to what replaced them (matches llm_utils).
-const PROVIDER_ALIASES = { ollama: 'claude_agent_sdk' }
 
 function isConfigured(cfg, p) {
   return PROVIDER_KEYS[p].some((k) => {
@@ -33,6 +32,9 @@ export default function Settings() {
   const [health, setHealth] = useState(null)
   const [msg, setMsg] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [ollamaModels, setOllamaModels] = useState([])
+  const [ollamaStatus, setOllamaStatus] = useState(null)
+  const [testingOllama, setTestingOllama] = useState(false)
   const [visible, setVisible] = useState([])  // provider cards currently shown
   const [addPick, setAddPick] = useState('')
   const [stLog, setStLog] = useState(null)     // search-terms suggestion log
@@ -43,14 +45,12 @@ export default function Settings() {
 
   useEffect(() => {
     api.getConfig().then((r) => {
-      const loaded = { ...r.config }
-      // A retired provider (e.g. "ollama") shows as its replacement; saving persists it.
-      const alias = PROVIDER_ALIASES[loaded.llm_provider]
-      if (alias) loaded.llm_provider = alias
-      setCfg(loaded)
+      setCfg(r.config)
       // Show only providers in use: the active one plus any that have config set.
-      const active = loaded.llm_provider || 'claude_agent_sdk'
-      setVisible(PROVIDERS.filter((p) => p === active || isConfigured(loaded, p)))
+      const active = r.config.llm_provider || 'openrouter'
+      setVisible(PROVIDERS.filter((p) => p === active || isConfigured(r.config, p)))
+      // Auto-populate the Ollama model list if that's the active provider.
+      if (r.config.llm_provider === 'ollama') testOllama(r.config.ollama_base_url, true)
     }).catch((e) => setMsg({ err: e.message }))
     api.getSchedule().then((s) => setSched({ enabled: s.enabled, time: s.time })).catch(() => {})
     api.health().then(setHealth).catch(() => {})
@@ -69,6 +69,22 @@ export default function Settings() {
   useEffect(() => {
     if (stLogRef.current) stLogRef.current.scrollTop = stLogRef.current.scrollHeight
   }, [stLog])
+
+  async function testOllama(baseUrl, silent = false) {
+    setTestingOllama(true)
+    if (!silent) setOllamaStatus(null)
+    try {
+      const r = await api.testOllama(baseUrl || '')
+      setOllamaModels(r.models || [])
+      setOllamaStatus(r.ok
+        ? { ok: `Connected — ${r.models.length} model${r.models.length === 1 ? '' : 's'} available` }
+        : { err: r.error })
+    } catch (e) {
+      setOllamaStatus({ err: e.message })
+    } finally {
+      setTestingOllama(false)
+    }
+  }
 
   if (!cfg) return <div className="card">Loading settings…</div>
 
@@ -151,13 +167,15 @@ export default function Settings() {
     attachStream()
   }
 
-  const provider = cfg.llm_provider || 'claude_agent_sdk'
+  const provider = cfg.llm_provider || 'openrouter'
+  const ollamaOptions = Array.from(new Set([...ollamaModels, cfg.ollama_model].filter(Boolean)))
   const hiddenProviders = PROVIDERS.filter((p) => !visible.includes(p))
 
   function addProvider(p) {
     if (!p || visible.includes(p)) return
     setVisible([...visible, p])
     setAddPick('')
+    if (p === 'ollama' && !ollamaModels.length) testOllama(cfg.ollama_base_url, true)
   }
 
   function removeProvider(p) {
@@ -228,7 +246,10 @@ export default function Settings() {
                   type="radio"
                   name="llm_provider"
                   checked={provider === p}
-                  onChange={() => set('llm_provider', p)}
+                  onChange={() => {
+                    set('llm_provider', p)
+                    if (p === 'ollama' && !ollamaModels.length) testOllama(cfg.ollama_base_url, true)
+                  }}
                 />
                 <span className="provider-name">{LABELS[p].name}</span>
                 <span className="muted small">{LABELS[p].note}</span>
@@ -250,10 +271,32 @@ export default function Settings() {
                     </Field>
                   </>
                 )}
+                {p === 'ollama' && (
+                  <>
+                    <Field label="Model" hint="installed models — Test to refresh">
+                      <select value={cfg.ollama_model || ''} onChange={(e) => set('ollama_model', e.target.value)}>
+                        {!cfg.ollama_model && <option value="">{ollamaModels.length ? '— select a model —' : '— Test to list models —'}</option>}
+                        {ollamaOptions.map((m) => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                    </Field>
+                    <Field label="Base URL">
+                      <div className="row">
+                        <input value={cfg.ollama_base_url || ''} onChange={(e) => set('ollama_base_url', e.target.value)} placeholder="http://localhost:11434/v1" />
+                        <button type="button" className="nowrap" onClick={() => testOllama(cfg.ollama_base_url)} disabled={testingOllama}>
+                          {testingOllama ? 'Testing…' : 'Test'}
+                        </button>
+                      </div>
+                      {ollamaStatus?.ok && <span className="ok small">✓ {ollamaStatus.ok}</span>}
+                      {ollamaStatus?.err && <span className="err small">✗ {ollamaStatus.err}</span>}
+                    </Field>
+                  </>
+                )}
                 {p === 'claude_agent_sdk' && (
                   <>
+                    <Field label="API key" hint="from console.anthropic.com — saved on the server, shown masked">
+                      <input type="password" autoComplete="off" value={cfg.claude_agent_sdk_api_key || ''} onChange={(e) => set('claude_agent_sdk_api_key', e.target.value)} placeholder="sk-ant-..." />
+                    </Field>
                     <Field label="Model" hint="blank = claude-opus-5-5"><input value={cfg.claude_agent_sdk_model || ''} onChange={(e) => set('claude_agent_sdk_model', e.target.value)} placeholder="claude-opus-5-5" /></Field>
-                    <Field label="API key" hint="blank = ANTHROPIC_API_KEY from .env"><input type="password" value={cfg.claude_agent_sdk_api_key || ''} onChange={(e) => set('claude_agent_sdk_api_key', e.target.value)} /></Field>
                     <Field label="Effort" hint="blank = model default">
                       <select value={cfg.claude_agent_sdk_effort || ''} onChange={(e) => set('claude_agent_sdk_effort', e.target.value)}>
                         <option value="">default</option>

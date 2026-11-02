@@ -151,7 +151,7 @@ Step-by-step guides live in [`docs/`](docs/README.md):
 | Guide | Covers |
 |---|---|
 | [Install](docs/01-install.md) | pip / from source / `autopilot init` scaffolding |
-| [LLM providers](docs/02-providers.md) | Claude Agent SDK (default), OpenRouter fallback chain, Claude CLI (keyless), Anthropic API |
+| [LLM providers](docs/02-providers.md) | OpenRouter fallback chain, Claude CLI (keyless), Claude Agent SDK, Anthropic API |
 | [API keys](docs/03-api-keys.md) | TinyFish + OpenRouter keys, where each goes |
 | [Companies & scanning](docs/04-companies-and-scanning.md) | `companies.json`, discovery + scoring, scan pacing |
 | [Integrations](docs/05-integrations.md) | Telegram notifications |
@@ -291,18 +291,7 @@ autopilot-jobhunt/
 
 ## LLM options
 
-### Default: Claude via the Claude Agent SDK
-
-Set `ANTHROPIC_API_KEY` in `.env` (get one at [console.anthropic.com](https://console.anthropic.com)) — that's it. The `claude-agent-sdk` package is installed with autopilot and bundles the Claude Code CLI it runs, so there's nothing else to install.
-
-```json
-"llm_provider": "claude_agent_sdk",
-"claude_agent_sdk_model": "claude-opus-5-5"
-```
-
-Calls are plain prompts (no tools, MCP servers or local Claude settings) and are billed to your Anthropic API account. Older configs with `"llm_provider": "ollama"` are routed here automatically. Details: [docs/02-providers.md](docs/02-providers.md).
-
-### Alternative: OpenRouter (free)
+### Default: OpenRouter (free)
 
 Uses a 4-model fallback chain — all free, no credit card needed:
 
@@ -313,7 +302,7 @@ Uses a 4-model fallback chain — all free, no credit card needed:
 | `google/gemma-4-31b-it:free` | Fallback 2 |
 | `qwen/qwen3-coder:free` | Fallback 3 |
 
-If one model hits its daily free-tier quota, the tool automatically tries the next. Zero LLM cost. Set `"llm_provider": "openrouter"` to use it.
+If one model hits its daily free-tier quota, the tool automatically tries the next. **Zero LLM cost by default.**
 
 ### Alternative A: Claude Code CLI (no API key needed)
 
@@ -336,7 +325,11 @@ Optionally set a model: `"claude_cli_model": "sonnet"` (or `"opus"`, `"haiku"`, 
 > (5–15 LLM calls) burns significantly against your subscription's 7-day rate limit. Prefer OpenRouter
 > for nightly automation; use Claude CLI for occasional on-demand drafts.
 
-### Alternative B: Anthropic API
+### Alternative B: Claude via the Claude Agent SDK
+
+In the web UI, open **Settings → Add a provider → Claude (Agent SDK)**, paste your Anthropic API key, select it and Save. Or set `"llm_provider": "claude_agent_sdk"` and `"claude_agent_sdk_api_key"` in `config.json` (falls back to `ANTHROPIC_API_KEY`). Model defaults to `claude-opus-5-5`. The `claude-agent-sdk` package is installed with autopilot and bundles the CLI it runs; calls are plain prompts with no tools. Details: [docs/02-providers.md](docs/02-providers.md).
+
+### Alternative C: Anthropic API
 
 If you have an Anthropic API key:
 
