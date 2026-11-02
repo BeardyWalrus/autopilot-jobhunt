@@ -31,40 +31,19 @@ def test_health(client):
     assert r.status_code == 200 and r.json()["status"] == "ok"
 
 
-def test_ollama_test_endpoint_ok(client, monkeypatch):
-    c, _ = client
-    monkeypatch.setattr("job_hunt.llm_utils.list_ollama_models",
-                        lambda base_url, config: ["llama3.1", "qwen2.5:7b"])
-    r = c.post("/api/ollama/test", json={"base_url": "http://x:11434/v1"})
-    assert r.status_code == 200 and r.json()["ok"] is True
-    assert r.json()["models"] == ["llama3.1", "qwen2.5:7b"]
-
-
-def test_ollama_test_endpoint_error_is_inline(client, monkeypatch):
-    c, _ = client
-
-    def boom(base_url, config):
-        raise RuntimeError("Could not reach Ollama at http://x")
-
-    monkeypatch.setattr("job_hunt.llm_utils.list_ollama_models", boom)
-    r = c.post("/api/ollama/test", json={"base_url": ""})
-    assert r.status_code == 200  # error is reported inline, not as HTTP error
-    assert r.json()["ok"] is False and "Ollama" in r.json()["error"]
-
-
 def test_config_seeds_template_then_roundtrips(client):
     c, tmp = client
     r = c.get("/api/config")
     assert r.status_code == 200 and r.json()["exists"] is False
     assert "candidate" in r.json()["config"]  # template served
 
-    new_cfg = {"llm_provider": "ollama", "ollama_model": "gemma4:e4b",
+    new_cfg = {"llm_provider": "claude_agent_sdk", "claude_agent_sdk_model": "claude-opus-5-5",
                "candidate": {"name": "Ada", "min_score": 60}}
     assert c.put("/api/config", json=new_cfg).status_code == 200
     got = c.get("/api/config")
     assert got.json()["exists"] is True
-    assert got.json()["config"]["ollama_model"] == "gemma4:e4b"
-    assert json.loads((tmp / "config.json").read_text())["llm_provider"] == "ollama"
+    assert got.json()["config"]["claude_agent_sdk_model"] == "claude-opus-5-5"
+    assert json.loads((tmp / "config.json").read_text())["llm_provider"] == "claude_agent_sdk"
 
 
 # --- companies ----------------------------------------------------------------

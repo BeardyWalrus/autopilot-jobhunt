@@ -10,8 +10,8 @@ where that content goes, so you can pick a setup that matches your comfort level
 - **Two things always leave your machine when you scan:** job page fetches go through
   **TinyFish** (cloud), and your **resume + the job description** go to your chosen
   **LLM provider** for scoring and drafting.
-- **The default provider (`openrouter`) is a cloud provider.** Out of the box, your
-  resume and the JD transit OpenRouter. Switch to `claude_cli` before your first run if
+- **The default provider (`claude_agent_sdk`) is a cloud provider.** Out of the box, your
+  resume and the JD go to Anthropic's API. Switch to `claude_cli` before your first run if
   you want to keep content on your existing local Claude session.
 
 ## What leaves your machine, by LLM provider
@@ -21,7 +21,8 @@ Set the provider with `llm_provider` in `config.json` (or `LLM_PROVIDER` in `.en
 | Provider (`llm_provider`) | Resume + JD content goes to | Key needed | Notes |
 |---|---|---|---|
 | `claude_cli` | **Your existing local Claude Code / Claude session** | none (uses `claude` CLI login) | No separate cloud upload beyond your existing Anthropic relationship. Best for privacy. |
-| `openrouter` **(default)** | **OpenRouter (cloud, third party)** | API key | Routes to whichever model you pick; content transits OpenRouter + the chosen model host. |
+| `claude_agent_sdk` **(default)** | **Anthropic (cloud)** | `ANTHROPIC_API_KEY` | Claude Agent SDK; tools, MCP servers and local Claude settings are switched off for these calls. |
+| `openrouter` | **OpenRouter (cloud, third party)** | API key | Routes to whichever model you pick; content transits OpenRouter + the chosen model host. |
 | `anthropic` | **Anthropic (cloud)** | API key | Direct Anthropic API. |
 
 > Regardless of provider, **page fetching always uses TinyFish** — job URLs and fetched

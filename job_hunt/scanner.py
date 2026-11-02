@@ -7,7 +7,7 @@ from pathlib import Path
 
 from tinyfish import RateLimitError, TinyFish
 
-from job_hunt.llm_utils import chat_with_llm
+from job_hunt.llm_utils import DEFAULT_AGENT_SDK_MODEL, chat_with_llm, resolve_provider
 from job_hunt.log import get_logger
 from job_hunt.notifier import send_telegram
 
@@ -441,7 +441,7 @@ def score_jobs(jobs: list[dict], resume: str, config: dict) -> list[dict]:
         min_score=min_score,
     )
 
-    provider = config.get("llm_provider") or "openrouter"
+    provider = resolve_provider(config)
     logger.debug(f"  Scoring {len(jobs)} job(s) via LLM (min_score={min_score})...")
     t0 = time.time()
     try:
@@ -727,12 +727,12 @@ def run_scan(config: dict, companies: list[dict]) -> None:
     logger.info(f"=== Scan started — {total} companies to check{suffix} ===")
     logger.info(f"Candidate: {config.get('candidate', {}).get('name', 'unknown')}")
     logger.info(f"Min score: {config.get('candidate', {}).get('min_score', 55)} | Top N: {config.get('candidate', {}).get('top_n', 5)}")
-    provider = config.get("llm_provider") or "openrouter"
+    provider = resolve_provider(config)
     model_by_provider = {
         "openrouter": config.get("openrouter_model", "default"),
         "anthropic": config.get("anthropic_model", "default"),
         "claude_cli": config.get("claude_cli_model") or "claude default",
-        "ollama": config.get("ollama_model", "llama3.1"),
+        "claude_agent_sdk": config.get("claude_agent_sdk_model") or DEFAULT_AGENT_SDK_MODEL,
     }
     logger.info(f"LLM provider: {provider} | Model: {model_by_provider.get(provider, 'default')}")
 

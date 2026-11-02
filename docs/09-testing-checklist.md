@@ -58,6 +58,7 @@ For each backend you support, set `llm_provider` and run a small scan (or a sing
 
 | `llm_provider` | Prereq |
 |---|---|
+| `claude_agent_sdk` | `ANTHROPIC_API_KEY` set |
 | `openrouter` | `OPENROUTER_API_KEY` set |
 | `claude_cli` | `claude auth login` done; `claude --print "hi"` works |
 | `anthropic` | `pip install '.[claude]'`; `ANTHROPIC_API_KEY` set |

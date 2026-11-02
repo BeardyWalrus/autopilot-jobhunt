@@ -9,7 +9,9 @@ on:
 
 jobs:
   lint-and-test:
-    runs-on: ubuntu-latest
+    # Runs on the self-hosted (Unraid) runner when the repo variable CI_RUNNER is
+    # "unraid" (fork PRs never get it), otherwise on GitHub-hosted ubuntu-latest.
+    runs-on: ${{ (vars.CI_RUNNER == 'unraid' && (github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork)) && 'self-hosted' || 'ubuntu-latest' }}
     strategy:
       matrix:
         python-version: ["3.11", "3.12", "3.13"]
@@ -52,7 +54,9 @@ jobs:
   # .env / config.json / API keys / resume PII are gitignored, but a public repo
   # should verify, not assume.
   secret-scan:
-    runs-on: ubuntu-latest
+    # Runs on the self-hosted (Unraid) runner when the repo variable CI_RUNNER is
+    # "unraid" (fork PRs never get it), otherwise on GitHub-hosted ubuntu-latest.
+    runs-on: ${{ (vars.CI_RUNNER == 'unraid' && (github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork)) && 'self-hosted' || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
         with:

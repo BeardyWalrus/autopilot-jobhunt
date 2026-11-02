@@ -23,6 +23,7 @@ COPY companies.json config.example.json ./
 # The server starts and answers introspection without them; keys are
 # only used when a tool is actually invoked.
 ENV TINYFISH_API_KEY="" \
+    ANTHROPIC_API_KEY="" \
     OPENROUTER_API_KEY=""
 
 # FastMCP serves over stdio.

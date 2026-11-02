@@ -1,5 +1,6 @@
 tinyfish>=0.2.5
 openai>=2.0.0
+claude-agent-sdk>=0.2.176
 python-dotenv>=1.0.0
 requests>=2.31.0
 

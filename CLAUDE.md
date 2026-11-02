@@ -24,7 +24,7 @@ docker compose up --build   # run the web UI in Docker (recommended)
 | File | Controls | Gitignored? |
 |---|---|---|
 | `config.json` | Candidate profile, LLM settings, Telegram | Yes — copy from `config.example.json` |
-| `.env` | API keys (TinyFish, OpenRouter, Telegram) | Yes — copy from `.env.example` |
+| `.env` | API keys (TinyFish, Anthropic, OpenRouter, Telegram) | Yes — copy from `.env.example` |
 | `companies.json` | List of companies to scan | No — committed, edit freely |
 | `resume/YOUR_RESUME.md` | Your resume text (Markdown) | Yes — template committed |
 
@@ -35,7 +35,7 @@ job_hunt/
   scanner.py    — TinyFish API job discovery + LLM scoring pipeline
   drafter.py    — cover letter + tailored resume bullet generation
   notifier.py   — Telegram notification sender (optional, graceful if unconfigured)
-  llm_utils.py  — LLM dispatch: OpenRouter (default), Anthropic API, or Claude Code CLI
+  llm_utils.py  — LLM dispatch: Claude Agent SDK (default), OpenRouter, Anthropic API, or Claude Code CLI
   tools.py      — protocol-agnostic tool layer (wraps scanner/drafter/exporter)
   mcp_server.py — FastMCP server exposing scan_jobs, draft_application, export_jobs
   main.py       — CLI entry point (autopilot command)
@@ -98,15 +98,13 @@ scored jobs. Scans can also run on a daily schedule (Settings → Schedule).
 - **Multiple scans/day:** risks exhausting free-tier quota — run once nightly via cron
 - Check live per-model limits: [openrouter.ai/models](https://openrouter.ai/models)
 
-### Ollama (LLM backend — local, no API key, no rate limits)
+### Claude Agent SDK (default LLM backend)
 
-- **Cost:** free — models run locally on your own machine, no quota, no daily cap
-- **Setup:** install from [ollama.com](https://ollama.com), then `ollama pull llama3.1`
-- **Activate:** set `"llm_provider": "ollama"` in `config.json` or `LLM_PROVIDER=ollama` in `.env`
-- **Model:** set `"ollama_model": "llama3.1"` (or `"mistral"`, `"qwen2.5"`, etc.)
-- **Host:** defaults to `http://localhost:11434/v1`; override with `"ollama_base_url"` / `OLLAMA_BASE_URL` for a remote Ollama server
-- **Rate limits:** none — bounded only by your local hardware
-- **"Could not reach Ollama":** the server isn't running — start it with `ollama serve` and confirm the model is pulled (`ollama pull <model>`)
+- **Setup:** set `ANTHROPIC_API_KEY` in `.env` (or the container env). `claude-agent-sdk` is a core dependency and its wheel bundles the Claude Code CLI — no Node or separate install
+- **Activate:** `"llm_provider": "claude_agent_sdk"` (also the default when unset). Legacy `"ollama"` is aliased to it with a warning
+- **Model:** `"claude_agent_sdk_model"` / `CLAUDE_AGENT_SDK_MODEL` — default `claude-opus-5-5`; optional `"claude_agent_sdk_effort"` (low…max)
+- **Calls:** one-shot, `tools=[]`, `max_turns=1`, `setting_sources=[]`, strict empty MCP config — no tools, no `~/.claude` settings. 300s timeout per call
+- **Cost / limits:** billed per token on the Anthropic API key; rate limits are your API tier's
 
 ### Claude Code CLI (LLM backend — no API key needed)
 

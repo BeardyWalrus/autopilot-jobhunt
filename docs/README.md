@@ -12,7 +12,7 @@ drafts for you to review — it **never applies or submits** on your behalf.
 | # | Guide | What it covers |
 |---|-------|----------------|
 | 01 | [Install](01-install.md) | pip / from source / `autopilot init` scaffolding |
-| 02 | [LLM providers](02-providers.md) | OpenRouter fallback chain, Claude CLI (keyless), Anthropic API |
+| 02 | [LLM providers](02-providers.md) | Claude Agent SDK (default), OpenRouter fallback chain, Claude CLI (keyless), Anthropic API |
 | 03 | [API keys](03-api-keys.md) | Get your TinyFish + OpenRouter keys; where each one goes |
 | 04 | [Companies & scanning](04-companies-and-scanning.md) | `companies.json`, how discovery + scoring work, scan pacing |
 | 05 | [Integrations](05-integrations.md) | Telegram notifications |
@@ -27,7 +27,8 @@ Set with `llm_provider` in `config.json` (or `LLM_PROVIDER` in `.env`).
 
 | `llm_provider` | Key needed | Runs on | Best for |
 |---|---|---|---|
-| `openrouter` **(default)** | `OPENROUTER_API_KEY` | OpenRouter cloud (free tier) | zero-cost nightly automation |
+| `claude_agent_sdk` **(default)** | `ANTHROPIC_API_KEY` | Anthropic cloud, via the Claude Agent SDK | Claude-quality scoring and drafts |
+| `openrouter` | `OPENROUTER_API_KEY` | OpenRouter cloud (free tier) | zero-cost nightly automation |
 | `claude_cli` | none (local `claude` login) | your Claude subscription | keyless / on-demand drafts |
 | `anthropic` | `ANTHROPIC_API_KEY` | Anthropic cloud | highest-quality scoring |
 

@@ -7,7 +7,7 @@ description: Run a job hunt in one agentic pass — scan configured company care
 
 You orchestrate the run through the project's MCP tools. Unlike a keyless skill, the
 **scan and scoring steps need configured keys** — TinyFish (page fetching) and an LLM
-provider (openrouter / anthropic / claude_cli). Your job is to drive the tools, help
+provider (claude_agent_sdk / openrouter / anthropic / claude_cli). Your job is to drive the tools, help
 the user read the results, and pick which roles to draft. You never apply or submit.
 
 ## Preconditions

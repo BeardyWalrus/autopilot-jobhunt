@@ -4,7 +4,7 @@ import subprocess
 import time
 from typing import Any, cast
 
-from openai import APIConnectionError, OpenAI, RateLimitError
+from openai import OpenAI, RateLimitError
 
 from job_hunt.log import get_logger
 
@@ -24,43 +24,10 @@ def _make_openrouter_client(config: dict) -> OpenAI:
     )
 
 
-def _make_ollama_client(config: dict) -> OpenAI:
-    base_url = config.get("ollama_base_url") or os.getenv("OLLAMA_BASE_URL") or "http://localhost:11434/v1"
-    return OpenAI(
-        # Ollama ignores the API key, but the OpenAI SDK refuses to start without
-        # a non-empty one — "ollama" is the conventional placeholder.
-        api_key=config.get("ollama_api_key") or os.getenv("OLLAMA_API_KEY") or "ollama",
-        base_url=base_url,
-        timeout=_LLM_REQUEST_TIMEOUT,
-    )
-
-
-def list_ollama_models(base_url: str | None = None, config: dict | None = None) -> list[str]:
-    """Return the model names installed on the Ollama server.
-
-    Uses Ollama's OpenAI-compatible /models endpoint. Raises RuntimeError with a
-    friendly message if the server can't be reached.
-    """
-    cfg = config or {}
-    url = base_url or cfg.get("ollama_base_url") or os.getenv("OLLAMA_BASE_URL") or "http://localhost:11434/v1"
-    client = OpenAI(
-        api_key=cfg.get("ollama_api_key") or os.getenv("OLLAMA_API_KEY") or "ollama",
-        base_url=url,
-        timeout=10.0,
-    )
-    try:
-        resp = client.models.list()
-    except APIConnectionError:
-        raise RuntimeError(
-            f"Could not reach Ollama at {url}. Is it running? Start it with 'ollama serve'."
-        )
-    return sorted(m.id for m in resp.data)
-
-
 def _stream_chat(llm: OpenAI, model: str, messages: list[dict], temperature: float,
                  max_tokens: int, on_token) -> str:
     """Stream a chat completion, calling on_token(delta) for each chunk. Returns
-    the full text. Used by the OpenAI-compatible providers (Ollama, OpenRouter)
+    the full text. Used by the OpenAI-compatible provider (OpenRouter)
     so the web UI can show the model's output as it generates."""
     resp = llm.chat.completions.create(
         model=model,
@@ -80,31 +47,153 @@ def _stream_chat(llm: OpenAI, model: str, messages: list[dict], temperature: flo
     return "".join(parts)
 
 
-def _chat_with_ollama(config: dict, messages: list[dict], temperature: float,
-                      max_tokens: int, on_token=None) -> str:
-    model = config.get("ollama_model", "llama3.1")
-    client = _make_ollama_client(config)
-    logger.debug(f"LLM call → Ollama / {model} @ {client.base_url}")
-    t0 = time.time()
-    try:
-        if on_token:
-            text = _stream_chat(client, model, messages, temperature, max_tokens, on_token)
-        else:
-            resp = client.chat.completions.create(
-                model=model,
-                messages=cast("Any", messages),
-                temperature=temperature,
-                max_tokens=max_tokens,
+# Default model for the Claude Agent SDK provider. Override with
+# "claude_agent_sdk_model" in config.json or CLAUDE_AGENT_SDK_MODEL in .env.
+DEFAULT_AGENT_SDK_MODEL = "claude-opus-5-5"
+
+# Wall-clock cap for one Agent SDK call (it runs the bundled Claude Code CLI as a
+# subprocess, like claude_cli, so it gets the same 300s budget).
+_AGENT_SDK_TIMEOUT = 300.0
+
+# Older configs used "ollama"; that provider has been replaced by the Claude
+# Agent SDK, so the old value is routed there instead of failing.
+_PROVIDER_ALIASES = {"ollama": "claude_agent_sdk"}
+_warned_aliases: set[str] = set()
+
+
+def resolve_provider(config: dict) -> str:
+    """The provider to use (default claude_agent_sdk), with retired names mapped
+    to their replacement."""
+    provider = config.get("llm_provider") or "claude_agent_sdk"
+    new = _PROVIDER_ALIASES.get(provider)
+    if new:
+        if provider not in _warned_aliases:
+            _warned_aliases.add(provider)
+            logger.warning(
+                f'llm_provider "{provider}" is no longer supported — using "{new}" instead. '
+                f'Set "llm_provider": "{new}" in config.json to silence this.'
             )
-            text = resp.choices[0].message.content or ""
-    except APIConnectionError:
-        raise RuntimeError(
-            f"Could not reach Ollama at {client.base_url}. Is it running?\n"
-            f"  Start the server:  ollama serve\n"
-            f"  Pull the model:    ollama pull {model}"
+        return new
+    return provider
+
+
+def _agent_sdk_api_key(config: dict) -> str | None:
+    for val in (
+        config.get("claude_agent_sdk_api_key"),
+        config.get("anthropic_api_key"),
+        os.getenv("ANTHROPIC_API_KEY"),
+    ):
+        if val and not val.upper().startswith("YOUR_") and not val.lower().endswith("_here"):
+            return val
+    return None
+
+
+def _run_coro_sync(make_coro, timeout: float):
+    """Run an async SDK call from sync code. Callers include FastMCP tool
+    handlers that may already be inside an event loop, where asyncio.run()
+    refuses to start — in that case run it on a fresh thread instead."""
+    import asyncio
+    import concurrent.futures
+
+    async def _bounded():
+        return await asyncio.wait_for(make_coro(), timeout=timeout)
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(_bounded())
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(asyncio.run, _bounded()).result()
+
+
+def _chat_with_claude_agent_sdk(config: dict, messages: list[dict], temperature: float,
+                                max_tokens: int, on_token=None) -> str:
+    """One-shot completion through the Claude Agent SDK.
+
+    The SDK drives the Claude Code CLI bundled in the claude-agent-sdk wheel, so
+    no separate install is needed. All built-in tools, MCP servers and on-disk
+    Claude settings are switched off: this is a plain prompt → text call.
+    temperature and max_tokens aren't settable through the SDK and are ignored.
+    """
+    try:
+        from claude_agent_sdk import (
+            AssistantMessage,
+            ClaudeAgentOptions,
+            ClaudeSDKError,
+            CLINotFoundError,
+            ResultMessage,
+            TextBlock,
+            query,
         )
+    except ImportError:
+        raise ImportError("Run: pip install claude-agent-sdk")
+
+    api_key = _agent_sdk_api_key(config)
+    if not api_key:
+        raise RuntimeError(
+            "ANTHROPIC_API_KEY not set for the claude_agent_sdk provider.\n"
+            "Add ANTHROPIC_API_KEY=sk-ant-... to your .env (or the container's environment).\n"
+            "Get a key at https://console.anthropic.com"
+        )
+    model = config.get("claude_agent_sdk_model") or DEFAULT_AGENT_SDK_MODEL
+    system = "\n\n".join(m["content"] for m in messages if m["role"] == "system") or None
+    user_msgs = [m for m in messages if m["role"] != "system"]
+    if len(user_msgs) == 1:
+        prompt_text = user_msgs[0]["content"]
+    else:
+        prompt_text = "\n\n".join(f"{m['role'].upper()}:\n{m['content']}" for m in user_msgs)
+
+    options = ClaudeAgentOptions(
+        model=model,
+        system_prompt=system,
+        tools=[],                # no built-in tools: plain text in, text out
+        max_turns=1,
+        setting_sources=[],      # ignore ~/.claude and project settings
+        mcp_servers={},
+        strict_mcp_config=True,  # and any .mcp.json / user MCP servers
+        env={"ANTHROPIC_API_KEY": api_key},
+    )
+    effort = config.get("claude_agent_sdk_effort")
+    if effort:  # low / medium / high / xhigh / max — blank = the model's default
+        options.effort = effort
+    logger.debug(f"LLM call → Claude Agent SDK / {model}")
+    t0 = time.time()
+
+    async def _run() -> tuple[str, Any]:
+        parts: list[str] = []
+        final: Any = None
+        async for msg in query(prompt=prompt_text, options=options):
+            if isinstance(msg, AssistantMessage):
+                for block in msg.content:
+                    if isinstance(block, TextBlock) and block.text:
+                        parts.append(block.text)
+                        if on_token:
+                            on_token(block.text)
+            elif isinstance(msg, ResultMessage):
+                final = msg
+        return "".join(parts), final
+
+    try:
+        text, result = _run_coro_sync(_run, _AGENT_SDK_TIMEOUT)
+    except CLINotFoundError:
+        raise RuntimeError(
+            "Claude Code CLI not found. It ships inside the claude-agent-sdk package — "
+            "reinstall it with: pip install --force-reinstall claude-agent-sdk"
+        )
+    except TimeoutError:
+        raise RuntimeError(f"Claude Agent SDK call timed out after {_AGENT_SDK_TIMEOUT:.0f}s.")
+    except ClaudeSDKError as e:
+        raise RuntimeError(f"Claude Agent SDK call failed: {e}") from e
+
+    if result is not None and result.is_error:
+        detail = result.result or getattr(result, "errors", None) or result.subtype
+        raise RuntimeError(f"Claude Agent SDK call failed ({result.subtype}): {detail}")
+    if result is not None and result.result:
+        text = result.result
     elapsed = time.time() - t0
-    logger.debug(f"LLM response: {len(text)} chars in {elapsed:.1f}s via ollama/{model}")
+    cost = getattr(result, "total_cost_usd", None)
+    cost_note = f", ${cost:.4f}" if cost else ""
+    logger.debug(f"LLM response: {len(text)} chars in {elapsed:.1f}s via agent-sdk/{model}{cost_note}")
     return text
 
 
@@ -205,12 +294,13 @@ def chat_with_llm(
     """Dispatch a chat completion to the configured provider.
 
     If on_token is given, it's called with each text chunk as it streams —
-    Ollama and OpenRouter stream natively; Anthropic and Claude CLI don't, so
-    their full output is passed to on_token once at the end.
+    OpenRouter streams token by token, the Claude Agent SDK block by block;
+    Anthropic and Claude CLI don't stream, so their full output is passed to
+    on_token once at the end.
     """
-    provider = config.get("llm_provider")
-    if provider == "ollama":
-        return _chat_with_ollama(config, messages, temperature, max_tokens, on_token)
+    provider = resolve_provider(config)
+    if provider == "claude_agent_sdk":
+        return _chat_with_claude_agent_sdk(config, messages, temperature, max_tokens, on_token)
     if provider == "anthropic":
         text = _chat_with_anthropic(config, messages, temperature, max_tokens)
     elif provider == "claude_cli":

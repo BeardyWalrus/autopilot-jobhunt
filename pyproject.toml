@@ -9,7 +9,7 @@ description = "AI-powered job scanner, scorer, and application drafter. Finds jo
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.11"
-keywords = ["job-search", "ai", "automation", "mcp", "llm", "openrouter"]
+keywords = ["job-search", "ai", "automation", "mcp", "llm", "claude", "openrouter"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Programming Language :: Python :: 3",
@@ -23,16 +23,18 @@ classifiers = [
 dependencies = [
     "tinyfish>=0.2.5",
     "openai>=2.0.0",
+    # Default LLM provider (claude_agent_sdk). The wheel bundles the Claude Code CLI.
+    "claude-agent-sdk>=0.2.176",
     "python-dotenv>=1.0.0",
     "requests>=2.31.0",
 ]
 
 [project.optional-dependencies]
-mcp = ["mcp>=1.9"]
+mcp = ["mcp>=1.9,<2"]  # mcp 2.x renamed FastMCP; pin until mcp_server.py is ported
 claude = ["anthropic>=0.30.0"]
 web = ["fastapi>=0.110", "uvicorn[standard]>=0.29", "python-multipart>=0.0.9"]
 dev = [
-    "pytest>=8.0", "pytest-cov>=4.0", "ruff>=0.4", "mypy>=1.8", "mcp>=1.9",
+    "pytest>=8.0", "pytest-cov>=4.0", "ruff>=0.4", "mypy>=1.8", "mcp>=1.9,<2",
     "fastapi>=0.110", "uvicorn[standard]>=0.29", "python-multipart>=0.0.9", "httpx>=0.27",
 ]
 
