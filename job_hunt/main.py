@@ -65,6 +65,8 @@ def load_config(require_tinyfish: bool = True) -> dict:
         "ANTHROPIC_MODEL": "anthropic_model",
         "OLLAMA_BASE_URL": "ollama_base_url",
         "OLLAMA_MODEL": "ollama_model",
+        "CLAUDE_AGENT_SDK_MODEL": "claude_agent_sdk_model",
+        "CLAUDE_AGENT_SDK_EFFORT": "claude_agent_sdk_effort",
     }
 
     for env_key, config_key in env_mapping.items():

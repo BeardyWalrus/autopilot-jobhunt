@@ -35,7 +35,7 @@ job_hunt/
   scanner.py    — TinyFish API job discovery + LLM scoring pipeline
   drafter.py    — cover letter + tailored resume bullet generation
   notifier.py   — Telegram notification sender (optional, graceful if unconfigured)
-  llm_utils.py  — LLM dispatch: OpenRouter (default), Anthropic API, or Claude Code CLI
+  llm_utils.py  — LLM dispatch: OpenRouter (default), Ollama, Claude Agent SDK, Anthropic API, or Claude Code CLI
   tools.py      — protocol-agnostic tool layer (wraps scanner/drafter/exporter)
   mcp_server.py — FastMCP server exposing scan_jobs, draft_application, export_jobs
   main.py       — CLI entry point (autopilot command)
@@ -107,6 +107,14 @@ scored jobs. Scans can also run on a daily schedule (Settings → Schedule).
 - **Host:** defaults to `http://localhost:11434/v1`; override with `"ollama_base_url"` / `OLLAMA_BASE_URL` for a remote Ollama server
 - **Rate limits:** none — bounded only by your local hardware
 - **"Could not reach Ollama":** the server isn't running — start it with `ollama serve` and confirm the model is pulled (`ollama pull <model>`)
+
+### Claude Agent SDK (LLM backend — Anthropic API key)
+
+- **Setup:** Settings page → add **Claude (Agent SDK)** and paste the key (stored as `claude_agent_sdk_api_key` in `config.json`; `GET /api/config` returns it masked and a PUT of the mask keeps the stored key). Falls back to `anthropic_api_key` / `ANTHROPIC_API_KEY`
+- **Activate:** `"llm_provider": "claude_agent_sdk"`
+- **Model:** `"claude_agent_sdk_model"` / `CLAUDE_AGENT_SDK_MODEL` — default `claude-opus-5-5`; optional `"claude_agent_sdk_effort"`
+- **Calls:** one-shot, `tools=[]`, `max_turns=1`, `setting_sources=[]`, strict empty MCP config. `claude-agent-sdk` is a core dependency; its wheel bundles the Claude Code CLI (no Node needed). 300s timeout per call
+- **Cost:** billed per token on the Anthropic API key
 
 ### Claude Code CLI (LLM backend — no API key needed)
 

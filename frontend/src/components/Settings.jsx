@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api.js'
 
-const PROVIDERS = ['openrouter', 'ollama', 'anthropic', 'claude_cli']
+const PROVIDERS = ['openrouter', 'ollama', 'claude_agent_sdk', 'anthropic', 'claude_cli']
 const LABELS = {
   openrouter: { name: 'OpenRouter', note: 'hosted free tier + paid models' },
   ollama: { name: 'Ollama', note: 'local — no key, no rate limits' },
+  claude_agent_sdk: { name: 'Claude (Agent SDK)', note: 'Claude via the Agent SDK (requires key)' },
   anthropic: { name: 'Anthropic', note: 'Claude API (requires key)' },
   claude_cli: { name: 'Claude Code CLI', note: 'uses your local claude auth' },
 }
@@ -13,6 +14,7 @@ const LABELS = {
 const PROVIDER_KEYS = {
   openrouter: ['openrouter_model', 'openrouter_api_key', 'openrouter_fallback_models'],
   ollama: ['ollama_model', 'ollama_base_url', 'ollama_api_key'],
+  claude_agent_sdk: ['claude_agent_sdk_model', 'claude_agent_sdk_api_key', 'claude_agent_sdk_effort'],
   anthropic: ['anthropic_model', 'anthropic_api_key'],
   claude_cli: ['claude_cli_model'],
 }
@@ -286,6 +288,20 @@ export default function Settings() {
                       </div>
                       {ollamaStatus?.ok && <span className="ok small">✓ {ollamaStatus.ok}</span>}
                       {ollamaStatus?.err && <span className="err small">✗ {ollamaStatus.err}</span>}
+                    </Field>
+                  </>
+                )}
+                {p === 'claude_agent_sdk' && (
+                  <>
+                    <Field label="API key" hint="from console.anthropic.com — saved on the server, shown masked">
+                      <input type="password" autoComplete="off" value={cfg.claude_agent_sdk_api_key || ''} onChange={(e) => set('claude_agent_sdk_api_key', e.target.value)} placeholder="sk-ant-..." />
+                    </Field>
+                    <Field label="Model" hint="blank = claude-opus-5-5"><input value={cfg.claude_agent_sdk_model || ''} onChange={(e) => set('claude_agent_sdk_model', e.target.value)} placeholder="claude-opus-5-5" /></Field>
+                    <Field label="Effort" hint="blank = model default">
+                      <select value={cfg.claude_agent_sdk_effort || ''} onChange={(e) => set('claude_agent_sdk_effort', e.target.value)}>
+                        <option value="">default</option>
+                        {['low', 'medium', 'high', 'xhigh', 'max'].map((x) => <option key={x} value={x}>{x}</option>)}
+                      </select>
                     </Field>
                   </>
                 )}

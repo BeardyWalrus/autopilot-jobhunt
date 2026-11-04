@@ -7,7 +7,7 @@ from pathlib import Path
 
 from tinyfish import RateLimitError, TinyFish
 
-from job_hunt.llm_utils import chat_with_llm
+from job_hunt.llm_utils import DEFAULT_AGENT_SDK_MODEL, chat_with_llm
 from job_hunt.log import get_logger
 from job_hunt.notifier import send_telegram
 
@@ -733,6 +733,7 @@ def run_scan(config: dict, companies: list[dict]) -> None:
         "anthropic": config.get("anthropic_model", "default"),
         "claude_cli": config.get("claude_cli_model") or "claude default",
         "ollama": config.get("ollama_model", "llama3.1"),
+        "claude_agent_sdk": config.get("claude_agent_sdk_model") or DEFAULT_AGENT_SDK_MODEL,
     }
     logger.info(f"LLM provider: {provider} | Model: {model_by_provider.get(provider, 'default')}")
 

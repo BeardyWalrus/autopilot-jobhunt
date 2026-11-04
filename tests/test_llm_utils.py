@@ -91,6 +91,11 @@ def test_chat_with_llm_routes_claude_cli(monkeypatch):
     assert llm_utils.chat_with_llm({"llm_provider": "claude_cli"}, []) == "CLI"
 
 
+def test_chat_with_llm_routes_claude_agent_sdk(monkeypatch):
+    monkeypatch.setattr(llm_utils, "_chat_with_claude_agent_sdk", lambda *a, **k: "SDK")
+    assert llm_utils.chat_with_llm({"llm_provider": "claude_agent_sdk"}, []) == "SDK"
+
+
 def test_chat_with_llm_routes_ollama(monkeypatch):
     monkeypatch.setattr(llm_utils, "_chat_with_ollama", lambda *a, **k: "OLL")
     assert llm_utils.chat_with_llm({"llm_provider": "ollama"}, []) == "OLL"
@@ -151,6 +156,147 @@ def test_chat_with_ollama_connection_refused(monkeypatch):
     monkeypatch.setattr(llm_utils, "_make_ollama_client", lambda cfg: fake)
     with pytest.raises(RuntimeError, match="Could not reach Ollama"):
         llm_utils._chat_with_ollama({}, [{"role": "user", "content": "x"}], 0.1, 100)
+
+
+# --- Claude Agent SDK -------------------------------------------------------
+
+class _SDKError(Exception):
+    pass
+
+
+class _CLINotFound(_SDKError):
+    pass
+
+
+def _fake_sdk(monkeypatch, messages=None, raises=None):
+    """Install a stand-in claude_agent_sdk module; returns the captured calls."""
+    captured: dict = {}
+
+    class Opts:
+        def __init__(self, **kw):
+            self.__dict__.update(kw)
+            self.effort = None
+
+    class TextBlock:
+        def __init__(self, text):
+            self.text = text
+
+    class AssistantMessage:
+        def __init__(self, content):
+            self.content = content
+
+    class ResultMessage:
+        def __init__(self, result=None, is_error=False, subtype="success", cost=0.0012):
+            self.result, self.is_error, self.subtype = result, is_error, subtype
+            self.total_cost_usd, self.errors = cost, None
+
+    async def query(prompt, options):
+        captured["prompt"], captured["options"] = prompt, options
+        if raises:
+            raise raises
+        for m in (messages or [])(AssistantMessage, TextBlock, ResultMessage):
+            yield m
+
+    mod = types.ModuleType("claude_agent_sdk")
+    mod.ClaudeAgentOptions = Opts
+    mod.AssistantMessage, mod.TextBlock, mod.ResultMessage = AssistantMessage, TextBlock, ResultMessage
+    mod.ClaudeSDKError, mod.CLINotFoundError = _SDKError, _CLINotFound
+    mod.query = query
+    monkeypatch.setitem(sys.modules, "claude_agent_sdk", mod)
+    return captured
+
+
+def _reply(*texts, result=None, **res_kw):
+    def build(Assistant, Text, Result):
+        return [Assistant([Text(t) for t in texts]), Result(result=result, **res_kw)]
+    return build
+
+
+def test_agent_sdk_success(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    cap = _fake_sdk(monkeypatch, _reply("Hello", " world", result="Hello world"))
+    got = []
+    msgs = [{"role": "system", "content": "be terse"}, {"role": "user", "content": "hi"}]
+    out = llm_utils._chat_with_claude_agent_sdk({"claude_agent_sdk_api_key": "sk-ant-x"}, msgs,
+                                                0.1, 100, on_token=got.append)
+    assert out == "Hello world" and got == ["Hello", " world"]
+    opts = cap["options"]
+    assert cap["prompt"] == "hi"
+    assert opts.model == llm_utils.DEFAULT_AGENT_SDK_MODEL == "claude-opus-5-5"
+    assert opts.system_prompt == "be terse"
+    assert opts.tools == [] and opts.max_turns == 1 and opts.setting_sources == []
+    assert opts.strict_mcp_config is True
+    assert opts.env == {"ANTHROPIC_API_KEY": "sk-ant-x"}
+    assert opts.effort is None
+
+
+def test_agent_sdk_model_effort_and_env_key(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-env")
+    cap = _fake_sdk(monkeypatch, _reply("ok"))
+    cfg = {"claude_agent_sdk_model": "claude-sonnet-5-5", "claude_agent_sdk_effort": "low",
+           "anthropic_api_key": "YOUR_ANTHROPIC_API_KEY"}  # placeholder is skipped
+    msgs = [{"role": "user", "content": "a"}, {"role": "assistant", "content": "b"},
+            {"role": "user", "content": "c"}]
+    out = llm_utils._chat_with_claude_agent_sdk(cfg, msgs, 0.1, 100)
+    assert out == "ok"  # no ResultMessage.result → joined text blocks
+    assert cap["options"].model == "claude-sonnet-5-5" and cap["options"].effort == "low"
+    assert cap["options"].env == {"ANTHROPIC_API_KEY": "sk-ant-env"}
+    assert cap["options"].system_prompt is None
+    assert cap["prompt"] == "USER:\na\n\nASSISTANT:\nb\n\nUSER:\nc"
+
+
+def test_agent_sdk_missing_key(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    _fake_sdk(monkeypatch, _reply("x"))
+    with pytest.raises(RuntimeError, match="No Anthropic API key"):
+        llm_utils._chat_with_claude_agent_sdk({}, [{"role": "user", "content": "x"}], 0.1, 100)
+
+
+def test_agent_sdk_error_result(monkeypatch):
+    _fake_sdk(monkeypatch, _reply(result="overloaded", is_error=True, subtype="error_during_execution"))
+    with pytest.raises(RuntimeError, match="error_during_execution"):
+        llm_utils._chat_with_claude_agent_sdk({"claude_agent_sdk_api_key": "k"},
+                                              [{"role": "user", "content": "x"}], 0.1, 100)
+
+
+def test_agent_sdk_cli_missing(monkeypatch):
+    _fake_sdk(monkeypatch, raises=_CLINotFound("gone"))
+    with pytest.raises(RuntimeError, match="Claude Code CLI not found"):
+        llm_utils._chat_with_claude_agent_sdk({"claude_agent_sdk_api_key": "k"},
+                                              [{"role": "user", "content": "x"}], 0.1, 100)
+
+
+def test_agent_sdk_other_sdk_error(monkeypatch):
+    _fake_sdk(monkeypatch, raises=_SDKError("Invalid API key"))
+    with pytest.raises(RuntimeError, match="Invalid API key"):
+        llm_utils._chat_with_claude_agent_sdk({"claude_agent_sdk_api_key": "k"},
+                                              [{"role": "user", "content": "x"}], 0.1, 100)
+
+
+def test_agent_sdk_timeout(monkeypatch):
+    import asyncio
+
+    _fake_sdk(monkeypatch, _reply("x"))
+
+    async def slow():
+        await asyncio.sleep(5)
+
+    monkeypatch.setattr(llm_utils, "_AGENT_SDK_TIMEOUT", 0.01)
+    with pytest.raises(TimeoutError):
+        llm_utils._run_coro_sync(slow, 0.01)
+
+
+def test_agent_sdk_works_inside_running_event_loop(monkeypatch):
+    """FastMCP tool handlers can call us from inside a loop; asyncio.run would refuse."""
+    import asyncio
+
+    _fake_sdk(monkeypatch, _reply("from a thread", result="from a thread"))
+
+    async def caller():
+        return llm_utils._chat_with_claude_agent_sdk({"claude_agent_sdk_api_key": "k"},
+                                                     [{"role": "user", "content": "x"}], 0.1, 100)
+
+    assert asyncio.run(caller()) == "from a thread"
 
 
 # --- streaming (on_token) -----------------------------------------------------

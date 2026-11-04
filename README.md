@@ -151,7 +151,7 @@ Step-by-step guides live in [`docs/`](docs/README.md):
 | Guide | Covers |
 |---|---|
 | [Install](docs/01-install.md) | pip / from source / `autopilot init` scaffolding |
-| [LLM providers](docs/02-providers.md) | OpenRouter fallback chain, Claude CLI (keyless), Anthropic API |
+| [LLM providers](docs/02-providers.md) | OpenRouter fallback chain, Claude CLI (keyless), Claude Agent SDK, Anthropic API |
 | [API keys](docs/03-api-keys.md) | TinyFish + OpenRouter keys, where each goes |
 | [Companies & scanning](docs/04-companies-and-scanning.md) | `companies.json`, discovery + scoring, scan pacing |
 | [Integrations](docs/05-integrations.md) | Telegram notifications |
@@ -325,7 +325,11 @@ Optionally set a model: `"claude_cli_model": "sonnet"` (or `"opus"`, `"haiku"`, 
 > (5–15 LLM calls) burns significantly against your subscription's 7-day rate limit. Prefer OpenRouter
 > for nightly automation; use Claude CLI for occasional on-demand drafts.
 
-### Alternative B: Anthropic API
+### Alternative B: Claude via the Claude Agent SDK
+
+In the web UI, open **Settings → Add a provider → Claude (Agent SDK)**, paste your Anthropic API key, select it and Save. Or set `"llm_provider": "claude_agent_sdk"` and `"claude_agent_sdk_api_key"` in `config.json` (falls back to `ANTHROPIC_API_KEY`). Model defaults to `claude-opus-5-5`. The `claude-agent-sdk` package is installed with autopilot and bundles the CLI it runs; calls are plain prompts with no tools. Details: [docs/02-providers.md](docs/02-providers.md).
+
+### Alternative C: Anthropic API
 
 If you have an Anthropic API key:
 

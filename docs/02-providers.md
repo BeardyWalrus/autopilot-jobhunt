@@ -56,6 +56,31 @@ Or per-run: `LLM_PROVIDER=claude_cli autopilot scan`.
 > `temperature` and `max_tokens` are not configurable with Claude CLI — the binary
 > doesn't expose them.
 
+## Claude Agent SDK
+
+Scores and drafts with Claude through the [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk/overview)
+(`claude-agent-sdk`, installed with autopilot — the wheel bundles the Claude Code CLI it
+drives, so there's nothing else to install). Each call is a plain one-shot prompt: no
+built-in tools, no MCP servers, and none of your `~/.claude` settings are loaded.
+
+**Web UI:** Settings → *Add a provider* → **Claude (Agent SDK)**, paste your Anthropic API
+key (from [console.anthropic.com](https://console.anthropic.com)), select it and Save. The
+key is stored in `config.json` on the server and only ever shown back masked.
+
+**Or in `config.json`:**
+
+```json
+"llm_provider": "claude_agent_sdk",
+"claude_agent_sdk_api_key": "sk-ant-...",
+"claude_agent_sdk_model": "claude-opus-5-5",   // default; any Claude model id
+"claude_agent_sdk_effort": ""                  // optional: low / medium / high / xhigh / max
+```
+
+- **Key lookup order:** `claude_agent_sdk_api_key` (Settings), then `anthropic_api_key`,
+  then the `ANTHROPIC_API_KEY` env var.
+- **Cost:** billed to your Anthropic API account per token (~10–30 calls per scan).
+- `temperature` and `max_tokens` aren't settable through the SDK and are ignored.
+
 ## Anthropic API
 
 Direct Anthropic API instead of OpenRouter.
@@ -73,7 +98,7 @@ pip install 'autopilot-jobhunt[claude]'
 - `claude-haiku-4-5-20251001` — fast, affordable, handles JSON scoring well.
 - `claude-sonnet-4-6` — higher-quality scores, higher cost.
 
-> When `llm_provider` is `claude_cli` or `anthropic`, `openrouter_api_key` is ignored —
+> When `llm_provider` isn't `openrouter`, `openrouter_api_key` is ignored —
 > you can leave it empty.
 
 ## Next

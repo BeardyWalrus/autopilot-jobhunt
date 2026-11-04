@@ -22,6 +22,7 @@ Set the provider with `llm_provider` in `config.json` (or `LLM_PROVIDER` in `.en
 |---|---|---|---|
 | `claude_cli` | **Your existing local Claude Code / Claude session** | none (uses `claude` CLI login) | No separate cloud upload beyond your existing Anthropic relationship. Best for privacy. |
 | `openrouter` **(default)** | **OpenRouter (cloud, third party)** | API key | Routes to whichever model you pick; content transits OpenRouter + the chosen model host. |
+| `claude_agent_sdk` | **Anthropic (cloud)** | API key (Settings page) | Claude Agent SDK; tools, MCP servers and local Claude settings are off for these calls. |
 | `anthropic` | **Anthropic (cloud)** | API key | Direct Anthropic API. |
 
 > Regardless of provider, **page fetching always uses TinyFish** — job URLs and fetched

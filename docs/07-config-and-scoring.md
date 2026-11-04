@@ -76,7 +76,7 @@ Tune `min_score` up if you get too many marginal matches, down if you get too fe
 
 ## Provider selection
 
-Set `llm_provider` to `openrouter` (default), `claude_cli`, or `anthropic` — see
+Set `llm_provider` to `openrouter` (default), `ollama`, `claude_agent_sdk`, `claude_cli`, or `anthropic` — see
 [02 — LLM providers](02-providers.md) for each backend's keys and models. Override at
 runtime without editing config: `LLM_PROVIDER=claude_cli autopilot scan`.
 

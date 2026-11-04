@@ -55,20 +55,48 @@ def health() -> dict:
 
 # --- config -------------------------------------------------------------------
 
+# Secrets the settings page can set but never reads back in full. GET returns a
+# masked placeholder; a PUT that sends the placeholder back keeps the stored key.
+_MASKED_KEYS = ("claude_agent_sdk_api_key",)
+_MASK_PREFIX = "••••••••"
+
+
+def _mask(val: Any) -> Any:
+    if not isinstance(val, str) or not val:
+        return val
+    return _MASK_PREFIX + (val[-4:] if len(val) > 8 else "")
+
+
+def _masked(cfg: dict) -> dict:
+    out = dict(cfg)
+    for k in _MASKED_KEYS:
+        if out.get(k):
+            out[k] = _mask(out[k])
+    return out
+
+
 @router.get("/config")
 def get_config() -> dict:
     cfg = _read_json(paths.config_path(), None)
     if cfg is None:
         return {"config": _config_template(), "exists": False}
-    return {"config": cfg, "exists": True}
+    return {"config": _masked(cfg), "exists": True}
 
 
 @router.put("/config")
 def put_config(config: dict = Body(...)) -> dict:
     if not isinstance(config, dict):
         raise HTTPException(400, "config must be a JSON object")
+    stored = _read_json(paths.config_path(), {}) or {}
+    for k in _MASKED_KEYS:
+        val = config.get(k)
+        if isinstance(val, str) and val.startswith(_MASK_PREFIX):
+            if stored.get(k):
+                config[k] = stored[k]  # unchanged placeholder — keep the real key
+            else:
+                config.pop(k, None)
     paths.config_path().write_text(json.dumps(config, indent=2))
-    return {"config": config, "exists": True}
+    return {"config": _masked(config), "exists": True}
 
 
 @router.post("/ollama/test")

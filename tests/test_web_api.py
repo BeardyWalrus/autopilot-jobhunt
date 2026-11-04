@@ -67,6 +67,32 @@ def test_config_seeds_template_then_roundtrips(client):
     assert json.loads((tmp / "config.json").read_text())["llm_provider"] == "ollama"
 
 
+def test_agent_sdk_key_is_masked_and_kept(client):
+    c, tmp = client
+    cfg = {"llm_provider": "claude_agent_sdk", "claude_agent_sdk_api_key": "sk-ant-secret-1234"}
+    put = c.put("/api/config", json=cfg)
+    assert put.status_code == 200
+    assert "secret" not in put.text
+    got = c.get("/api/config").json()["config"]
+    assert got["claude_agent_sdk_api_key"].endswith("1234")
+    assert "secret" not in got["claude_agent_sdk_api_key"]
+    # Saving the page again sends the mask back: the real key must survive.
+    got["top_n_note"] = "x"
+    assert c.put("/api/config", json=got).status_code == 200
+    on_disk = json.loads((tmp / "config.json").read_text())
+    assert on_disk["claude_agent_sdk_api_key"] == "sk-ant-secret-1234"
+    # A new key replaces it.
+    got["claude_agent_sdk_api_key"] = "sk-ant-new-key-9999"
+    c.put("/api/config", json=got)
+    assert json.loads((tmp / "config.json").read_text())["claude_agent_sdk_api_key"] == "sk-ant-new-key-9999"
+
+
+def test_agent_sdk_mask_without_stored_key_is_dropped(client):
+    c, tmp = client
+    c.put("/api/config", json={"claude_agent_sdk_api_key": "••••••••abcd"})
+    assert "claude_agent_sdk_api_key" not in json.loads((tmp / "config.json").read_text())
+
+
 # --- companies ----------------------------------------------------------------
 
 def test_companies_crud(client):
