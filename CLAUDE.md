@@ -21,6 +21,22 @@ AI job agent: scans 130+ company careers pages nightly, scores every role agains
   ADRs aren't archived; to change one, write a new ADR that supersedes it.
   See [ADR 0001](docs/adr/0001-record-decisions-with-openspec-and-adrs.md).
 
+## Keeping CI healthy
+
+- **Check `main` after every merge.** A green PR doesn't make a green
+  `main`. Once a PR merges, find the runs its merge commit started on `main`
+  (`ci.yml` runs on every push to `main`) and wait for them to finish, e.g.
+  `gh run list --branch main --commit <merge-sha>`. If one goes red, start
+  fixing it straight away (a fix PR, or a revert if the fix isn't quick) and
+  tell the owner what broke and what's being done. Don't just report it.
+- **No silent re-runs.** A check that fails and then passes on a re-run is a
+  flaky test, not a pass. Find the cause (timing, runner load, test order,
+  shared state) before moving on, fix it or open an issue naming it, and say
+  so in the PR.
+- **Send an incident summary when something breaks.** When CI, a deploy or
+  `main` breaks, tell the owner what broke, why, the fix, and what stops it
+  happening again. Not just "done".
+
 ## Key commands
 
 ```bash
