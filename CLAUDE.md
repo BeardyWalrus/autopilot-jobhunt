@@ -2,6 +2,25 @@
 
 AI job agent: scans 130+ company careers pages nightly, scores every role against your resume with an LLM (0–100), sends top matches via Telegram, and drafts tailored cover letters + resume bullets on demand.
 
+## How we build features
+
+- **Every feature starts with an OpenSpec change.** Before writing code for a
+  new feature or a change in behaviour, create a change under
+  `openspec/changes/<change-id>/` (`/opsx:propose`): `proposal.md` (why and
+  what), `tasks.md`, spec deltas under `specs/`, and `design.md` listing each
+  decision with the options weighed. Get the owner's go-ahead on the change
+  before building, build from its tasks (`/opsx:apply`), and archive it once
+  it ships (`/opsx:archive`) so `openspec/specs/` stays the current truth.
+  Bug fixes, refactors and doc changes that don't change behaviour don't need
+  one.
+- **Lasting decisions get an ADR.** When a decision in `design.md` will
+  outlive the change (a privacy rule, a storage, hardware or dependency
+  choice, an interface other parts build on), also write
+  `docs/adr/NNNN-short-title.md` from `docs/adr/template.md`, add it to the
+  index in `docs/adr/README.md`, and link it from the change's `design.md`.
+  ADRs aren't archived; to change one, write a new ADR that supersedes it.
+  See [ADR 0001](docs/adr/0001-record-decisions-with-openspec-and-adrs.md).
+
 ## Key commands
 
 ```bash
