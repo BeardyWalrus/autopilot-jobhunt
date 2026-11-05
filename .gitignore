@@ -44,8 +44,11 @@ job_hunt/web/static/
 .pytest_cache/
 .serena/
 
-# Claude Code project config
-.claude/
+# Claude Code project config (local settings stay ignored; the OpenSpec
+# commands and skills are shared so every session can run /opsx:*)
+.claude/*
+!.claude/commands/
+!.claude/skills/
 
 # graphify knowledge graph
 graphify-out/

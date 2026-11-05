@@ -1,0 +1,25 @@
+# Architecture decision records
+
+One short note per decision that should outlive the feature it came from: a
+privacy rule, a storage, hardware or dependency choice, an interface other
+parts build on. The OpenSpec change says **what** the app does; an ADR says
+**why** we chose this way of doing it, so nobody undoes it without knowing.
+
+## How to add one
+
+1. Copy [`template.md`](template.md) to `NNNN-short-title.md`, using the next
+   free number.
+2. Fill in context, decision, alternatives and consequences. Link the
+   OpenSpec change it came from, and link the ADR back from that change's
+   `design.md`.
+3. Add a row to the index below.
+
+ADRs are never archived and rarely edited. To change a decision, write a new
+ADR that supersedes the old one, and set the old one's status to
+`Superseded by NNNN`.
+
+## Index
+
+| # | Decision | Status | Date |
+|---|----------|--------|------|
+| [0001](0001-record-decisions-with-openspec-and-adrs.md) | Start every feature with an OpenSpec change and record lasting decisions as ADRs | Accepted | 2026-11-05 |

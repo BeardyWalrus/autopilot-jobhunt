@@ -1,0 +1,39 @@
+schema: spec-driven
+
+# House rules (see CLAUDE.md and docs/adr/README.md): every feature starts
+# with a change here, and lasting decisions also get an ADR in docs/adr/.
+rules:
+  design:
+    - Under Decisions, give each decision the options weighed and why this one won
+    - Mark any decision that will outlive this change as "ADR" and write it up in docs/adr/ from docs/adr/template.md, linking it here
+
+# Project context (optional)
+# This is shown to AI when creating artifacts.
+# Add your tech stack, conventions, style guides, domain knowledge, etc.
+# Example:
+#   context: |
+#     Tech stack: TypeScript, React, Node.js
+#     We use conventional commits
+#     Domain: e-commerce platform
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always include a "Non-goals" section
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
+
+# Per-operation guidance (optional)
+# Add advisory guidance for how apply and archive work should be conducted.
+# This is separate from artifact rules above.
+# Example:
+#   operations:
+#     apply:
+#       guidance:
+#         - Keep test summaries concise
+#     archive:
+#       guidance:
+#         - Summarize the archive outcome before finishing
