@@ -2,6 +2,12 @@
 
 AI job agent: scans 130+ company careers pages nightly, scores every role against your resume with an LLM (0–100), sends top matches via Telegram, and drafts tailored cover letters + resume bullets on demand.
 
+## Commands for the owner
+
+- **Use `gh`, not plain `git`.** Update a checkout on the owner's machines with
+  `gh repo sync`, never `git pull`, and give each command as one complete line
+  starting with `cd` and the checkout's full path.
+
 ## How we build features
 
 - **Every feature starts with an OpenSpec change.** Before writing code for a
