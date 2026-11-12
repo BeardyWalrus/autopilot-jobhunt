@@ -9,6 +9,11 @@ reconstructed from git history.
 
 ## [Unreleased]
 
+### Changed
+- **Docker image publishes on every merge to `main` again.** `:latest` on GHCR is
+  rebuilt whenever a merge touches the image, so fixes are ready to pull straight
+  away. Release tags and manual runs still publish too. See ADR 0003.
+
 ### Added
 - **Duplicate job listings fold into one row.** A job is now matched by its job
   board's own ID (Greenhouse, Lever, Ashby, SmartRecruiters, Workable, Workday) or

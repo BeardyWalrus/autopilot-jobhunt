@@ -1,12 +1,20 @@
 name: Publish web image to GHCR
 
 # Builds the web UI image (Dockerfile.web) and pushes it to the GitHub Container
-# Registry. Publishing happens only at release time — on a version tag (v*) or a
-# manual run (workflow_dispatch) — NOT on every merge to main. PRs still build the
-# image (no push) so the Dockerfile stays verified. This lets several changes land
-# on main and be shipped together when you're ready to cut a release.
+# Registry. Every merge to main that touches the image publishes :latest, so a
+# fix is ready to pull as soon as it lands (ADR 0003). Version tags (v*) also
+# publish :latest plus semver tags, and a manual run (workflow_dispatch) pushes
+# :latest. PRs build the image (no push) so the Dockerfile stays verified.
 on:
   push:
+    branches: [main]       # a merge to main -> build + push :latest
+    paths:                 # only when the image could change (not docs-only merges)
+      - "Dockerfile.web"
+      - "docker/**"
+      - "frontend/**"
+      - "job_hunt/**"
+      - "pyproject.toml"
+      - ".github/workflows/docker-publish.yml"
     tags: ["v*"]           # a release tag -> build + push (latest + semver)
   pull_request:
     branches: [main]
@@ -18,6 +26,12 @@ on:
       - "pyproject.toml"
       - ".github/workflows/docker-publish.yml"
   workflow_dispatch:       # "publish :latest now" without a tag, when ready
+
+# Two quick merges: the newer run supersedes the older, so :latest is never
+# overwritten by an older build finishing last.
+concurrency:
+  group: docker-publish-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-and-push:
@@ -39,11 +53,11 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ steps.img.outputs.name }}
-          # :latest tracks the newest release (a v* tag) or a manual publish.
-          # Version tags come from the pushed git tag; :sha is always added for
-          # traceability. Nothing here fires on a plain merge to main anymore.
+          # :latest tracks main (every merge), a release (a v* tag) or a manual
+          # publish. Version tags come from the pushed git tag; :sha is always
+          # added for traceability.
           tags: |
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' }}
             type=sha
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
