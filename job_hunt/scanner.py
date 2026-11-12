@@ -7,6 +7,7 @@ from pathlib import Path
 
 from tinyfish import RateLimitError, TinyFish
 
+from job_hunt.dedupe import backup_once, collapse_duplicates, job_key, job_urls
 from job_hunt.llm_utils import DEFAULT_AGENT_SDK_MODEL, chat_with_llm
 from job_hunt.log import get_logger
 from job_hunt.notifier import send_telegram
@@ -211,12 +212,19 @@ def discover_job_urls(
     tf: TinyFish, company: dict, seen_urls: set, candidate: dict | None = None
 ) -> list[dict]:
     found_urls: set[str] = set()
+    # Compare by job key (ATS job ID or canonical URL), not the raw string, so a
+    # posting we've already handled isn't picked up again under a tracking link,
+    # a trailing slash or a different board's URL. See job_hunt/dedupe.py.
+    seen_keys = {job_key(u) for u in seen_urls}
+
+    def _is_new(link: str) -> bool:
+        return link not in seen_urls and job_key(link) not in seen_keys
 
     logger.debug(f"  [{company['name']}] Fetching careers page: {company['careers_url']}")
     resp = _fetch_with_ratelimit(tf, [company["careers_url"]], format="markdown", links=True)
     if resp and resp.results:
         links = resp.results[0].links
-        direct = [link for link in links if is_job_url(link) and link not in seen_urls]
+        direct = [link for link in links if is_job_url(link) and _is_new(link)]
         ats_pages = list({link for link in links if is_ats_listing(link)})
         found_urls.update(direct)
         logger.debug(f"  [{company['name']}] Careers page: {len(direct)} direct job links, {len(ats_pages)} ATS listing pages")
@@ -227,7 +235,7 @@ def discover_job_urls(
             ats_jobs = 0
             for page_links in ats_link_map.values():
                 for link in page_links:
-                    if is_job_url(link) and link not in seen_urls:
+                    if is_job_url(link) and _is_new(link):
                         found_urls.add(link)
                         ats_jobs += 1
             logger.debug(f"  [{company['name']}] ATS expansion: {ats_jobs} additional job links")
@@ -239,7 +247,7 @@ def discover_job_urls(
             resp = tf.search.query(query, language="en")
             search_new = 0
             for r in resp.results:
-                if is_job_url(r.url) and r.url not in seen_urls:
+                if is_job_url(r.url) and _is_new(r.url):
                     found_urls.add(r.url)
                     search_new += 1
             logger.debug(f"  [{company['name']}] Search: {len(resp.results)} results, {search_new} new job URLs")
@@ -253,6 +261,16 @@ def discover_job_urls(
             time.sleep(13)
             break
 
+    # Several of the links found can be the same posting; keep one per job key.
+    unique: dict[str, str] = {}
+    for u in sorted(found_urls):
+        unique.setdefault(job_key(u), u)
+    if len(unique) < len(found_urls):
+        logger.debug(
+            f"  [{company['name']}] {len(found_urls) - len(unique)} duplicate link(s) "
+            "to the same posting dropped"
+        )
+
     new = [
         {
             "url": u,
@@ -262,7 +280,7 @@ def discover_job_urls(
             "location": company["location"],
             "region": company["region"],
         }
-        for u in found_urls
+        for u in unique.values()
     ]
     return new
 
@@ -558,8 +576,9 @@ def _export_to_csv(jobs: list[dict], label: str) -> Path:
 def _merge_results(all_scored_jobs: list[dict]) -> None:
     """Merge this run's jobs into the cumulative results store (results.json).
 
-    New jobs are appended with status "new"; jobs already present keep their
-    status (applied / not_applied / new) but have their scored fields refreshed.
+    New jobs are appended with status "new"; jobs already present (the same
+    posting, by job key or company + title + location) keep their status
+    (applied / not_applied / new) but have their scored fields refreshed.
     Nothing is ever removed here — the user removes results in the UI. Seeds from
     last_scan.json on first use so existing installs don't lose their last run.
     """
@@ -578,40 +597,43 @@ def _merge_results(all_scored_jobs: list[dict]) -> None:
         except Exception:
             existing = []
 
-    by_url: dict[str, dict] = {}
-    ordered: list[dict] = []
-    for j in existing:
-        url = j.get("url") if isinstance(j, dict) else None
-        if url and url not in by_url:
-            by_url[url] = j
-            ordered.append(j)
-    for job in all_scored_jobs:
-        url = job.get("url")
-        if not url:
-            continue
-        if url in by_url:
-            prev = by_url[url]
-            status = prev.get("status", "new")
-            prev.update(job)
-            prev["status"] = status  # refresh score/title/etc. but keep the user's status
-        else:
-            entry = {**job, "status": job.get("status", "new")}
-            by_url[url] = entry
-            ordered.append(entry)
-
+    # Fold repeat listings (same job ID, same canonical URL, or same company +
+    # title + location) into one row that lists every link in "sources". The
+    # first time this folds anything already on disk, keep a backup so the
+    # clean-up can be undone (state/results.pre-dedupe.json).
+    existing = [j for j in existing if isinstance(j, dict) and j.get("url")]
+    cleaned = collapse_duplicates(existing)
+    if len(cleaned) < len(existing) and RESULTS_FILE.exists():
+        backup = backup_once(RESULTS_FILE, existing)
+        if backup:
+            logger.info(
+                f"Folded {len(existing) - len(cleaned)} duplicate saved result(s); "
+                f"backup of the previous list: {backup}"
+            )
+    incoming = [{**j, "status": j.get("status", "new")} for j in all_scored_jobs if j.get("url")]
+    ordered = collapse_duplicates(cleaned, incoming)
+    RESULTS_FILE.parent.mkdir(exist_ok=True)
     RESULTS_FILE.write_text(json.dumps(ordered, indent=2))
 
 
 def _append_history(jobs: list[dict]) -> int:
-    """Append genuinely-new rows (by URL) to job_history.json. Returns new rows."""
+    """Append genuinely-new rows (by job key) to job_history.json. Returns new rows."""
     history: list[dict] = []
     if JOB_HISTORY_FILE.exists():
         try:
             history = json.loads(JOB_HISTORY_FILE.read_text())
         except Exception:
             history = []
-    existing_urls = {j["url"] for j in history if isinstance(j, dict) and j.get("url")}
-    new_entries = [j for j in jobs if j.get("url") and j["url"] not in existing_urls]
+    existing_keys = {job_key(j["url"]) for j in history if isinstance(j, dict) and j.get("url")}
+    new_entries = []
+    for j in jobs:
+        if not j.get("url"):
+            continue
+        keys = {job_key(u) for u in job_urls(j)}
+        if keys & existing_keys:
+            continue
+        existing_keys |= keys
+        new_entries.append(j)
     if new_entries:
         history.extend(new_entries)
         JOB_HISTORY_FILE.parent.mkdir(exist_ok=True)
@@ -630,8 +652,9 @@ def _persist_scan(all_scored_jobs: list[dict]) -> int:
     # Merge into the cumulative store BEFORE overwriting last_scan, so the first
     # run after an upgrade can still recover the previous run from last_scan.json.
     _merge_results(all_scored_jobs)
-    LAST_SCAN_FILE.write_text(json.dumps(all_scored_jobs, indent=2))
-    return _append_history(all_scored_jobs)
+    unique = collapse_duplicates(all_scored_jobs)
+    LAST_SCAN_FILE.write_text(json.dumps(unique, indent=2))
+    return _append_history(unique)
 
 
 # --- rescore queue -------------------------------------------------------------
@@ -652,17 +675,17 @@ def _save_rescore_queue(jobs: list[dict]) -> None:
 
 
 def _enqueue_rescore(jobs: list[dict]) -> None:
-    """Queue jobs whose scoring failed, deduped by URL. Keeps the enriched job
+    """Queue jobs whose scoring failed, deduped by job key. Keeps the enriched job
     dict (with fetched content) so the retry has everything it needs. Existing
     queued entries — and their attempt counts — are preserved."""
     queue = _load_rescore_queue()
-    by_url = {j.get("url"): j for j in queue if isinstance(j, dict) and j.get("url")}
+    by_key = {job_key(j["url"]): j for j in queue if isinstance(j, dict) and j.get("url")}
     for job in jobs:
         url = job.get("url")
-        if not url or url in by_url:
+        if not url or job_key(url) in by_key:
             continue
-        by_url[url] = {**job, "_rescore_attempts": int(job.get("_rescore_attempts", 0))}
-    _save_rescore_queue(list(by_url.values()))
+        by_key[job_key(url)] = {**job, "_rescore_attempts": int(job.get("_rescore_attempts", 0))}
+    _save_rescore_queue(list(by_key.values()))
 
 
 def rescore_queued(config: dict, resume: str, on_token=None) -> dict:
@@ -861,8 +884,10 @@ def run_scan(config: dict, companies: list[dict]) -> None:
     _checkpoint()
     logger.debug(f"Final save: {len(all_scored_jobs)} total jobs → {LAST_SCAN_FILE}")
 
+    # One row per posting for the notification and CSV, however many links it had.
+    unique_jobs = collapse_duplicates(all_scored_jobs)
     top_jobs = sorted(
-        [j for j in all_scored_jobs if j.get("score", 0) >= min_score],
+        [j for j in unique_jobs if j.get("score", 0) >= min_score],
         key=lambda x: x.get("score", 0), reverse=True
     )[:top_n]
 
@@ -884,7 +909,7 @@ def run_scan(config: dict, companies: list[dict]) -> None:
 
     # Always persist results to CSV when there are scored jobs — this is the
     # durable record regardless of whether Telegram is configured.
-    csv_path = _export_to_csv(all_scored_jobs, "scan results") if all_scored_jobs else None
+    csv_path = _export_to_csv(unique_jobs, "scan results") if unique_jobs else None
 
     if errors and telegram_configured:
         error_msg = f"<b>Job Hunt Errors — {date_str}</b>\n" + "\n".join(errors)

@@ -10,6 +10,14 @@ reconstructed from git history.
 ## [Unreleased]
 
 ### Added
+- **Duplicate job listings fold into one row.** A job is now matched by its job
+  board's own ID (Greenhouse, Lever, Ashby, SmartRecruiters, Workable, Workday) or
+  its link with tracking noise stripped, not the exact URL string, so the same
+  posting found under another link is skipped before it's fetched or scored. Saved
+  results also fold reposts (same company, title and location) into one row that
+  keeps every link (**+N more links** on the Scan tab) and the furthest-along
+  status. Existing duplicates fold on the next scan or status change; the old list
+  is kept once in `state/results.pre-dedupe.json`. See ADR 0002.
 - **Claude Agent SDK provider** (`"llm_provider": "claude_agent_sdk"`). Scoring,
   drafting and suggestions can run on Claude (`claude-opus-5-5` by default, set
   `claude_agent_sdk_model`) through `claude-agent-sdk`, now a core dependency. Pick

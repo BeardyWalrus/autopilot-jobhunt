@@ -23,3 +23,4 @@ ADR that supersedes the old one, and set the old one's status to
 | # | Decision | Status | Date |
 |---|----------|--------|------|
 | [0001](0001-record-decisions-with-openspec-and-adrs.md) | Start every feature with an OpenSpec change and record lasting decisions as ADRs | Accepted | 2026-11-05 |
+| [0002](0002-collapse-duplicate-job-listings.md) | Identify jobs by ATS job ID and fold repeat listings | Accepted | 2026-11-12 |
