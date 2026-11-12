@@ -319,7 +319,7 @@ export default function Scan() {
             </button>
           </div>
         )}
-        <p className="muted small">Results persist across scans. Mark each <strong>Applied</strong> or <strong>Not a fit</strong>, or delete it — they stay until you do.</p>
+        <p className="muted small">Results persist across scans. Mark each <strong>Applied</strong> or <strong>Not a fit</strong>, or delete it — they stay until you do. The same job found at several links shows once, with the extra links under <strong>+N more</strong>.</p>
         <div className="tablewrap">
           <table>
             <thead>
@@ -346,6 +346,14 @@ export default function Scan() {
                   </td>
                   <td className="nowrap">
                     {j.url && <a className="apply" href={absUrl(j.url)} target="_blank" rel="noopener noreferrer">Apply ↗</a>}
+                    {j.sources && j.sources.length > 1 && (
+                      <details className="sources small">
+                        <summary title="The same job was found at these links">+{j.sources.length - 1} more link{j.sources.length > 2 ? 's' : ''}</summary>
+                        {j.sources.filter((u) => u !== j.url).map((u) => (
+                          <div key={u}><a className="url" href={absUrl(u)} target="_blank" rel="noopener noreferrer">{u}</a></div>
+                        ))}
+                      </details>
+                    )}
                     <button className="link danger" onClick={() => deleteResult(j)} title="Remove from results">delete</button>
                   </td>
                 </tr>

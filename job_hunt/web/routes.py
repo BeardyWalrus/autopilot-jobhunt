@@ -13,6 +13,7 @@ from typing import Any
 from fastapi import APIRouter, Body, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
+from job_hunt.dedupe import backup_once, collapse_duplicates, find_job
 from job_hunt.web import paths
 from job_hunt.web.job_runner import runner as jobs
 from job_hunt.web.scan_runner import runner
@@ -457,9 +458,10 @@ def scan_stream() -> StreamingResponse:
 _RESULT_STATUSES = ("new", "applied", "not_applied")
 
 
-def _read_results() -> list:
-    """The cumulative, status-carrying results store. Falls back to last_scan.json
-    (seeding status) for installs that haven't run a scan since the upgrade."""
+def _read_results_raw() -> list:
+    """The cumulative, status-carrying results store as saved. Falls back to
+    last_scan.json (seeding status) for installs that haven't run a scan since
+    the upgrade."""
     path = paths.results_path()
     if path.exists():
         data = _read_json(path, [])
@@ -467,6 +469,21 @@ def _read_results() -> list:
     legacy = _read_json(paths.last_scan_path(), [])
     return [{**j, "status": j.get("status", "new")}
             for j in (legacy if isinstance(legacy, list) else []) if isinstance(j, dict)]
+
+
+def _read_results() -> list:
+    """The results store with repeat listings of the same job folded into one row
+    (every link kept in "sources"). See job_hunt/dedupe.py."""
+    return collapse_duplicates([j for j in _read_results_raw() if isinstance(j, dict)])
+
+
+def _save_results(jobs: list) -> None:
+    """Write ``jobs`` (already folded). The first time that folds rows already on
+    disk, keep the old list as state/results.pre-dedupe.json so it can be undone."""
+    raw = _read_results_raw()
+    if len(jobs) < len(raw) and paths.results_path().exists():
+        backup_once(paths.results_path(), raw)
+    _write_results(jobs)
 
 
 def _write_results(jobs: list) -> None:
@@ -492,14 +509,11 @@ def set_result_status(url: str = Body(..., embed=True),
     if status not in _RESULT_STATUSES:
         raise HTTPException(400, f"status must be one of {', '.join(_RESULT_STATUSES)}")
     jobs = _read_results()
-    found = False
-    for j in jobs:
-        if j.get("url") == url:
-            j["status"] = status
-            found = True
-    if not found:
+    idx = find_job(jobs, url)
+    if idx < 0:
         raise HTTPException(404, "no result with that URL")
-    _write_results(jobs)
+    jobs[idx]["status"] = status
+    _save_results(jobs)
     return {"url": url, "status": status, "count": len(jobs)}
 
 
@@ -512,12 +526,12 @@ def delete_result(url: str = Body(..., embed=True)) -> dict:
     jobs to un-remember it if you do want it back.
     """
     jobs = _read_results()
-    kept = [j for j in jobs if j.get("url") != url]
-    removed = len(jobs) - len(kept)
-    if not removed:
+    idx = find_job(jobs, url)
+    if idx < 0:
         raise HTTPException(404, "no result with that URL")
-    _write_results(kept)
-    return {"removed": removed, "count": len(kept)}
+    kept = jobs[:idx] + jobs[idx + 1:]
+    _save_results(kept)
+    return {"removed": 1, "count": len(kept)}
 
 
 @router.delete("/results/all")

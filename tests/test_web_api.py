@@ -509,3 +509,27 @@ def test_schedule_roundtrip_and_validation(client):
     assert json.loads((tmp / "config.json").read_text())["schedule"]["time"] == "02:30"
 
     assert c.put("/api/schedule", json={"enabled": True, "time": "25:99"}).status_code == 400
+
+
+def test_results_fold_duplicates_and_act_on_any_link(client):
+    c, tmp = client
+    gh = "https://boards.greenhouse.io/acme/jobs/4012345"
+    raw = [
+        {"url": gh, "company": "Acme", "title": "Data Scientist", "score": 80, "status": "new"},
+        {"url": gh + "?gh_src=x", "company": "Acme", "title": "Data Scientist", "score": 80,
+         "status": "new"},
+        {"url": "https://acme.com/jobs/other", "company": "Acme", "title": "Data Engineer",
+         "score": 70, "status": "new"},
+    ]
+    (tmp / "state" / "results.json").write_text(json.dumps(raw))
+    jobs = c.get("/api/results").json()["jobs"]
+    assert len(jobs) == 2 and jobs[0]["sources"] == [gh, gh + "?gh_src=x"]
+    # GET doesn't rewrite the file; a status change saves the folded list + a backup.
+    assert len(json.loads((tmp / "state" / "results.json").read_text())) == 3
+    assert c.put("/api/results/status",
+                 json={"url": gh + "?gh_src=x", "status": "applied"}).status_code == 200
+    saved = json.loads((tmp / "state" / "results.json").read_text())
+    assert len(saved) == 2 and saved[0]["status"] == "applied"
+    assert json.loads((tmp / "state" / "results.pre-dedupe.json").read_text()) == raw
+    r = c.request("DELETE", "/api/results", json={"url": gh + "/"})
+    assert r.json() == {"removed": 1, "count": 1}

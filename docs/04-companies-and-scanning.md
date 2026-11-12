@@ -34,8 +34,15 @@ faster.
    runs a `site:<search_domain>` query built from `candidate.search_seniority` /
    `search_keywords` (defaults to senior/staff ML/AI roles if unset) — see
    [07 — Config & scoring](07-config-and-scoring.md).
-2. **Deduplicate** — URLs already seen (tracked in `state/seen_jobs.json`) are skipped,
-   so each scan surfaces only *new* postings.
+2. **Deduplicate** — jobs already seen (tracked in `state/seen_jobs.json`) are skipped,
+   so each scan surfaces only *new* postings. Jobs are matched by the job board's own
+   job ID where the link shows one (Greenhouse, Lever, Ashby, SmartRecruiters,
+   Workable, Workday), otherwise by the link with tracking parameters, trailing
+   slashes and `/apply` removed — so the same posting under a different link isn't
+   fetched or scored twice. Saved results also fold a repost (same company, title and
+   location) into one row; the extra links show under **+N more links** on the Scan
+   tab. The first time old duplicates are folded, the previous list is kept in
+   `state/results.pre-dedupe.json` ([ADR 0002](adr/0002-collapse-duplicate-job-listings.md)).
 3. **Fetch details** — pull each job page's content (first ~3000 chars).
 4. **Score** — a small batch of jobs (default 5, set `score_batch_size` to change)
    → LLM → a `KEY: value` block per job with score (0–100), extracted title,
