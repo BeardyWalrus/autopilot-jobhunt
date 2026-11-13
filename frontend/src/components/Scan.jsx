@@ -1,6 +1,21 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api.js'
 import { absUrl } from '../util.js'
+import { groupByCompany } from '../grouping.js'
+
+// View and company sort are remembered per browser. Storage can be blocked
+// (private window, cleared site data), so every access falls back quietly.
+const VIEW_KEY = 'autopilot.results.view'
+const SORT_KEY = 'autopilot.results.companySort'
+function readPref(key, allowed, fallback) {
+  try {
+    const v = window.localStorage.getItem(key)
+    return allowed.includes(v) ? v : fallback
+  } catch { return fallback }
+}
+function writePref(key, value) {
+  try { window.localStorage.setItem(key, value) } catch { /* ignore */ }
+}
 
 export default function Scan() {
   const [running, setRunning] = useState(false)
@@ -15,6 +30,9 @@ export default function Scan() {
   const [hideHandled, setHideHandled] = useState(false)
   const [rescoreQueued, setRescoreQueued] = useState(0)
   const [rescoring, setRescoring] = useState(false)
+  const [view, setView] = useState(() => readPref(VIEW_KEY, ['roles', 'company'], 'roles'))
+  const [companySort, setCompanySort] = useState(() => readPref(SORT_KEY, ['name', 'score'], 'name'))
+  const [collapsed, setCollapsed] = useState(() => new Set())  // company keys folded away
   const logRef = useRef(null)
   const esRef = useRef(null)
   const pollRef = useRef(null)
@@ -228,6 +246,54 @@ export default function Scan() {
   const visibleResults = hideHandled
     ? results.filter((j) => !j.status || j.status === 'new')
     : results
+  const byCompany = view === 'company'
+  const groups = byCompany ? groupByCompany(visibleResults, companySort) : []
+  const colCount = byCompany ? 7 : 8
+
+  function chooseView(v) { setView(v); writePref(VIEW_KEY, v) }
+  function chooseSort(v) { setCompanySort(v); writePref(SORT_KEY, v) }
+  function toggleCompany(key) {
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key); else next.add(key)
+      return next
+    })
+  }
+
+  function renderRow(j, i) {
+    return (
+      <tr key={j.url || i} className={j.status === 'not_applied' ? 'handled' : ''}>
+        <td><span className={scoreClass(j.score)}>{j.score ?? '—'}</span></td>
+        {!byCompany && <td>{j.company}</td>}
+        <td>{j.extracted_title || j.title}</td>
+        <td>{j.location_remote || j.location}</td>
+        <td className="small">{j.stack}</td>
+        <td className="small">{j.reason}</td>
+        <td className="nowrap">
+          <button
+            className={j.status === 'applied' ? 'chip on ok' : 'chip'}
+            onClick={() => setStatus(j, 'applied')}
+            title="Mark as applied">✓ Applied</button>
+          <button
+            className={j.status === 'not_applied' ? 'chip on muted-chip' : 'chip'}
+            onClick={() => setStatus(j, 'not_applied')}
+            title="Mark as not a fit">✗ Not a fit</button>
+        </td>
+        <td className="nowrap">
+          {j.url && <a className="apply" href={absUrl(j.url)} target="_blank" rel="noopener noreferrer">Apply ↗</a>}
+          {j.sources && j.sources.length > 1 && (
+            <details className="sources small">
+              <summary title="The same job was found at these links">+{j.sources.length - 1} more link{j.sources.length > 2 ? 's' : ''}</summary>
+              {j.sources.filter((u) => u !== j.url).map((u) => (
+                <div key={u}><a className="url" href={absUrl(u)} target="_blank" rel="noopener noreferrer">{u}</a></div>
+              ))}
+            </details>
+          )}
+          <button className="link danger" onClick={() => deleteResult(j)} title="Remove from results">delete</button>
+        </td>
+      </tr>
+    )
+  }
 
   return (
     <div className="stack">
@@ -299,8 +365,12 @@ export default function Scan() {
 
       <div className="card">
         <div className="row between">
-          <h2>Results <span className="muted">({visibleResults.length}{handledCount ? ` of ${results.length}` : ''})</span></h2>
+          <h2>Results <span className="muted">({visibleResults.length}{handledCount ? ` of ${results.length}` : ''}{byCompany ? ` · ${groups.length} compan${groups.length === 1 ? 'y' : 'ies'}` : ''})</span></h2>
           <div className="row">
+            <div className="segmented" role="group" aria-label="View">
+              <button className={byCompany ? '' : 'on'} aria-pressed={!byCompany} onClick={() => chooseView('roles')}>All roles</button>
+              <button className={byCompany ? 'on' : ''} aria-pressed={byCompany} onClick={() => chooseView('company')}>By company</button>
+            </div>
             {handledCount > 0 && (
               <label className="checkbox nowrap" title="Hide results marked applied or not-a-fit">
                 <input type="checkbox" checked={hideHandled} onChange={(e) => setHideHandled(e.target.checked)} />
@@ -319,48 +389,48 @@ export default function Scan() {
             </button>
           </div>
         )}
+        {byCompany && groups.length > 0 && (
+          <div className="row group-tools">
+            <label className="nowrap small muted" htmlFor="company-sort">Sort companies</label>
+            <select id="company-sort" className="compact" value={companySort} onChange={(e) => chooseSort(e.target.value)}>
+              <option value="name">A–Z</option>
+              <option value="score">Best score</option>
+            </select>
+            <button className="link" onClick={() => setCollapsed(new Set())} disabled={collapsed.size === 0}>expand all</button>
+            <button className="link" onClick={() => setCollapsed(new Set(groups.map((g) => g.key)))}
+              disabled={groups.every((g) => collapsed.has(g.key))}>collapse all</button>
+          </div>
+        )}
         <p className="muted small">Results persist across scans. Mark each <strong>Applied</strong> or <strong>Not a fit</strong>, or delete it — they stay until you do. The same job found at several links shows once, with the extra links under <strong>+N more</strong>.</p>
         <div className="tablewrap">
           <table>
             <thead>
-              <tr><th>Score</th><th>Company</th><th>Role</th><th>Location</th><th>Stack</th><th>Why</th><th>Status</th><th></th></tr>
+              <tr><th>Score</th>{!byCompany && <th>Company</th>}<th>Role</th><th>Location</th><th>Stack</th><th>Why</th><th>Status</th><th></th></tr>
             </thead>
+            {byCompany
+              ? groups.map((g) => {
+                  const open = !collapsed.has(g.key)
+                  return (
+                    <tbody key={g.key || '(none)'}>
+                      <tr className="company-row">
+                        <td colSpan={colCount}>
+                          <button className="company-toggle" aria-expanded={open} onClick={() => toggleCompany(g.key)}>
+                            <span className="caret">{open ? '▾' : '▸'}</span>
+                            <span className="company-name">{g.name}</span>
+                            <span className="muted small">{g.count} role{g.count === 1 ? '' : 's'}</span>
+                            {g.best != null && <span className={scoreClass(g.best)} title="Best score">{g.best}</span>}
+                          </button>
+                        </td>
+                      </tr>
+                      {open && g.jobs.map(renderRow)}
+                    </tbody>
+                  )
+                })
+              : <tbody>{visibleResults.map(renderRow)}</tbody>}
             <tbody>
-              {visibleResults.map((j, i) => (
-                <tr key={j.url || i} className={j.status === 'not_applied' ? 'handled' : ''}>
-                  <td><span className={scoreClass(j.score)}>{j.score ?? '—'}</span></td>
-                  <td>{j.company}</td>
-                  <td>{j.extracted_title || j.title}</td>
-                  <td>{j.location_remote || j.location}</td>
-                  <td className="small">{j.stack}</td>
-                  <td className="small">{j.reason}</td>
-                  <td className="nowrap">
-                    <button
-                      className={j.status === 'applied' ? 'chip on ok' : 'chip'}
-                      onClick={() => setStatus(j, 'applied')}
-                      title="Mark as applied">✓ Applied</button>
-                    <button
-                      className={j.status === 'not_applied' ? 'chip on muted-chip' : 'chip'}
-                      onClick={() => setStatus(j, 'not_applied')}
-                      title="Mark as not a fit">✗ Not a fit</button>
-                  </td>
-                  <td className="nowrap">
-                    {j.url && <a className="apply" href={absUrl(j.url)} target="_blank" rel="noopener noreferrer">Apply ↗</a>}
-                    {j.sources && j.sources.length > 1 && (
-                      <details className="sources small">
-                        <summary title="The same job was found at these links">+{j.sources.length - 1} more link{j.sources.length > 2 ? 's' : ''}</summary>
-                        {j.sources.filter((u) => u !== j.url).map((u) => (
-                          <div key={u}><a className="url" href={absUrl(u)} target="_blank" rel="noopener noreferrer">{u}</a></div>
-                        ))}
-                      </details>
-                    )}
-                    <button className="link danger" onClick={() => deleteResult(j)} title="Remove from results">delete</button>
-                  </td>
-                </tr>
-              ))}
-              {results.length === 0 && <tr><td colSpan={8} className="muted center">No results yet — run a scan.</td></tr>}
+              {results.length === 0 && <tr><td colSpan={colCount} className="muted center">No results yet — run a scan.</td></tr>}
               {results.length > 0 && visibleResults.length === 0 && (
-                <tr><td colSpan={8} className="muted center">All results handled — untick “Hide handled” to see them.</td></tr>
+                <tr><td colSpan={colCount} className="muted center">All results handled — untick “Hide handled” to see them.</td></tr>
               )}
             </tbody>
           </table>

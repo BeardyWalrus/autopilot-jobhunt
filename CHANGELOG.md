@@ -15,6 +15,14 @@ reconstructed from git history.
   away. Release tags and manual runs still publish too. See ADR 0003.
 
 ### Added
+- **Results by company.** The Scan tab's Results card has a **View** switch:
+  **All roles** (the list as before) or **By company**, which shows each company
+  once with its role count and best score and its roles under it. Companies sort
+  A–Z or by best score, and each one collapses and expands (or all at once). The
+  same per-role actions work in both views, and the choice is remembered in the
+  browser.
+- **Frontend tests in CI.** A new `frontend` job runs Vitest unit tests and builds
+  the web bundle on every PR. See ADR 0004.
 - **Duplicate job listings fold into one row.** A job is now matched by its job
   board's own ID (Greenhouse, Lever, Ashby, SmartRecruiters, Workable, Workday) or
   its link with tracking noise stripped, not the exact URL string, so the same
