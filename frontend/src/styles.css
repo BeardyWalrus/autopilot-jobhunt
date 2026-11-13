@@ -231,3 +231,16 @@ tr.disabled td:first-child { text-decoration: none; }
 .sources { margin-top: 4px; white-space: normal; }
 .sources summary { cursor: pointer; color: var(--muted, #888); }
 .sources .url { display: inline-block; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+
+/* Results: All roles / By company switch and company header rows. */
+.segmented { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; flex-shrink: 0; }
+.segmented button { border: 0; border-radius: 0; background: none; color: var(--muted); padding: 6px 12px; font-size: 13px; white-space: nowrap; }
+.segmented button + button { border-left: 1px solid var(--border); }
+.segmented button.on { background: var(--panel-2); color: var(--text); }
+.group-tools { margin: 0 0 10px; flex-wrap: wrap; }
+select.compact { width: auto; padding: 4px 8px; font-size: 13px; }
+tr.company-row td { background: var(--panel-2); padding: 0; }
+.company-toggle { display: flex; align-items: center; gap: 10px; width: 100%; background: none; border: 0; border-radius: 0; padding: 9px 10px; text-align: left; color: var(--text); }
+.company-toggle:hover { background: rgba(79, 140, 255, 0.06); }
+.company-toggle .caret { width: 12px; color: var(--muted); }
+.company-toggle .company-name { font-weight: 600; }
