@@ -76,6 +76,7 @@ job_hunt/
   scanner.py    — TinyFish API job discovery + LLM scoring pipeline
   drafter.py    — cover letter + tailored resume bullet generation
   notifier.py   — Telegram notification sender (optional, graceful if unconfigured)
+  pay.py        — reads each role's pay from its listing text (never guessed; ADR 0005)
   llm_utils.py  — LLM dispatch: OpenRouter (default), Ollama, Claude Agent SDK, Anthropic API, or Claude Code CLI
   tools.py      — protocol-agnostic tool layer (wraps scanner/drafter/exporter)
   mcp_server.py — FastMCP server exposing scan_jobs, draft_application, export_jobs

@@ -23,6 +23,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from job_hunt.pay import pay_for
+
 _PLACEHOLDERS = {
     "YOUR_TINYFISH_API_KEY", "your_tinyfish_api_key_here",
     "YOUR_OPENROUTER_API_KEY", "your_openrouter_api_key_here",
@@ -155,7 +157,7 @@ LAST_SCAN_FILE = Path("state/last_scan.json")
 JOB_HISTORY_FILE = Path("state/job_history.json")
 
 EXPORT_FIELDS = [
-    "Company", "Role", "Location", "Application URL",
+    "Company", "Role", "Pay", "Location", "Application URL",
     "Score (%)", "Stack", "Region", "Reason", "Worth Applying", "Scan Date",
 ]
 
@@ -165,6 +167,7 @@ def _job_to_row(j: dict) -> dict:
     return {
         "Company": j.get("company", ""),
         "Role": j.get("extracted_title") or j.get("title", ""),
+        "Pay": pay_for(j),
         "Location": j.get("location_remote") or j.get("location", ""),
         "Application URL": j.get("url", ""),
         "Score (%)": j.get("score", ""),

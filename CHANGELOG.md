@@ -15,6 +15,12 @@ reconstructed from git history.
   away. Release tags and manual runs still publish too. See ADR 0003.
 
 ### Added
+- **Pay on every role.** Each role shows its salary, day rate or hourly rate
+  exactly as the listing words it, or **Not given** when the listing has no
+  figure. It's read from the whole posting by pattern matching, never by a model
+  and never estimated, so it adds no LLM cost. Shown in both Results views, as a
+  Pay column in CSV exports and as a 💷 line in Telegram. Roles saved before this
+  pick up their pay from their stored listing text. See ADR 0005.
 - **Results by company.** The Scan tab's Results card has a **View** switch:
   **All roles** (the list as before) or **By company**, which shows each company
   once with its role count and best score and its roles under it. Companies sort

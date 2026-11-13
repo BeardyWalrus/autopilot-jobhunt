@@ -11,6 +11,7 @@ from job_hunt.dedupe import backup_once, collapse_duplicates, job_key, job_urls
 from job_hunt.llm_utils import DEFAULT_AGENT_SDK_MODEL, chat_with_llm
 from job_hunt.log import get_logger
 from job_hunt.notifier import send_telegram
+from job_hunt.pay import NOT_GIVEN, extract_pay, pay_for
 
 logger = get_logger()
 
@@ -137,7 +138,7 @@ Set WORTH to yes only if SCORE is at least {min_score}.
 Score every job in the list."""
 
 EXPORT_FIELDS = [
-    "Company", "Role", "Location", "Application URL",
+    "Company", "Role", "Pay", "Location", "Application URL",
     "Score (%)", "Stack", "Region", "Reason", "Worth Applying", "Scan Date",
 ]
 
@@ -303,6 +304,9 @@ def _fetch_details_batch(tf: TinyFish, batch: list[dict]) -> int:
     for job in batch:
         r = fetched.get(job["url"])
         if r and r.text:
+            # Read pay from the whole page before trimming it: salary lines
+            # often sit at the end of a long posting.
+            job["pay"] = extract_pay(r.text) or ""
             job["content"] = r.text[:3000]
             job["title"] = r.title or job["title"]
             got += 1
@@ -522,6 +526,9 @@ def score_jobs(jobs: list[dict], resume: str, config: dict) -> list[dict]:
                     "reason": reason,
                 }
             )
+            if not job.get("pay"):
+                found = pay_for(job)
+                job["pay"] = "" if found == NOT_GIVEN else found
             results.append(job)
 
     passing = len(results)
@@ -536,6 +543,7 @@ def format_telegram_message(top_jobs: list[dict], date_str: str) -> str:
             f"<b>#{i}</b> | {job['company']} | {job.get('extracted_title', job['title'])}\n"
             f"📍 {job.get('location_remote', job['location'])}\n"
             f"🔧 {job.get('stack', 'N/A')}\n"
+            f"💷 {pay_for(job)}\n"
             f"✅ {job.get('reason', '')}\n"
             f"<a href=\"{job['url']}\">Apply</a>\n"
         )
@@ -553,6 +561,7 @@ def _export_to_csv(jobs: list[dict], label: str) -> Path:
         return {
             "Company": j.get("company", ""),
             "Role": j.get("extracted_title") or j.get("title", ""),
+            "Pay": pay_for(j),
             "Location": j.get("location_remote") or j.get("location", ""),
             "Application URL": j.get("url", ""),
             "Score (%)": j.get("score", ""),

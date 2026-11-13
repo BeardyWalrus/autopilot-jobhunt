@@ -244,3 +244,4 @@ tr.company-row td { background: var(--panel-2); padding: 0; }
 .company-toggle:hover { background: rgba(79, 140, 255, 0.06); }
 .company-toggle .caret { width: 12px; color: var(--muted); }
 .company-toggle .company-name { font-weight: 600; }
+td.pay { min-width: 7em; }

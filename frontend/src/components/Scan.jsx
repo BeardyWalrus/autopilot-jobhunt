@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api.js'
-import { absUrl } from '../util.js'
+import { absUrl, payLabel } from '../util.js'
 import { groupByCompany } from '../grouping.js'
 
 // View and company sort are remembered per browser. Storage can be blocked
@@ -248,7 +248,7 @@ export default function Scan() {
     : results
   const byCompany = view === 'company'
   const groups = byCompany ? groupByCompany(visibleResults, companySort) : []
-  const colCount = byCompany ? 7 : 8
+  const colCount = byCompany ? 8 : 9
 
   function chooseView(v) { setView(v); writePref(VIEW_KEY, v) }
   function chooseSort(v) { setCompanySort(v); writePref(SORT_KEY, v) }
@@ -266,6 +266,7 @@ export default function Scan() {
         <td><span className={scoreClass(j.score)}>{j.score ?? '—'}</span></td>
         {!byCompany && <td>{j.company}</td>}
         <td>{j.extracted_title || j.title}</td>
+        <td className={j.pay ? 'pay' : 'pay muted small'} title="Pay as the listing gives it">{payLabel(j)}</td>
         <td>{j.location_remote || j.location}</td>
         <td className="small">{j.stack}</td>
         <td className="small">{j.reason}</td>
@@ -405,7 +406,7 @@ export default function Scan() {
         <div className="tablewrap">
           <table>
             <thead>
-              <tr><th>Score</th>{!byCompany && <th>Company</th>}<th>Role</th><th>Location</th><th>Stack</th><th>Why</th><th>Status</th><th></th></tr>
+              <tr><th>Score</th>{!byCompany && <th>Company</th>}<th>Role</th><th>Pay</th><th>Location</th><th>Stack</th><th>Why</th><th>Status</th><th></th></tr>
             </thead>
             {byCompany
               ? groups.map((g) => {

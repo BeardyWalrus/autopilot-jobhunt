@@ -161,6 +161,8 @@ def _absorb(kept: dict, other: dict, refresh: bool) -> None:
     primary = kept.get("url") or other.get("url")
     if refresh:
         kept.update({k: v for k, v in other.items() if k not in ("url", "sources", "status")})
+    elif not kept.get("pay") and other.get("pay"):
+        kept["pay"] = other["pay"]  # a repeat listing that names the pay fills the gap
     kept["url"] = primary
     if has_status:
         kept["status"] = status
