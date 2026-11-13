@@ -14,6 +14,7 @@ from fastapi import APIRouter, Body, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
 from job_hunt.dedupe import backup_once, collapse_duplicates, find_job
+from job_hunt.pay import pay_for
 from job_hunt.web import paths
 from job_hunt.web.job_runner import runner as jobs
 from job_hunt.web.scan_runner import runner
@@ -497,6 +498,8 @@ def results() -> dict:
     jobs = _read_results()
     for j in jobs:
         j.setdefault("status", "new")
+        # Roles saved before pay was read get it from their stored listing text.
+        j["pay"] = pay_for(j)
     jobs = sorted(jobs, key=lambda j: j.get("score", 0), reverse=True)
     return {"jobs": jobs, "count": len(jobs)}
 
