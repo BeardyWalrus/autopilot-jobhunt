@@ -12,4 +12,4 @@
 
 - [x] 3.1 ADR 0007 and its index row
 - [x] 3.2 CHANGELOG entry
-- [ ] 3.3 Seen on the box: the home dashboard updates this app and reads the new build
+- [x] 3.3 Seen on the box: the home dashboard updated this app to 3e2ba0e on 16 Nov 2026 and reads that build

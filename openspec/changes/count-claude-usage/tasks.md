@@ -17,4 +17,4 @@
 ## 4. Docs
 
 - [x] 4.1 ADR 0006, ADR index, CHANGELOG
-- [ ] 4.2 Seen on the home dashboard's Claude card
+- [x] 4.2 Seen on the home dashboard's Claude card (16 Nov 2026: Job hunt line reads, 0 calls since the ledger began)
