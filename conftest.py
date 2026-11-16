@@ -46,13 +46,14 @@ def fake_llm(monkeypatch):
         queue = [responses] if isinstance(responses, str) else list(responses)
         calls: list[dict] = []
 
-        def _fake(config, messages, temperature=0.1, max_tokens=4096):
+        def _fake(config, messages, temperature=0.1, max_tokens=4096, on_token=None, feature="other"):
             calls.append(
                 {
                     "config": config,
                     "messages": messages,
                     "temperature": temperature,
                     "max_tokens": max_tokens,
+                    "feature": feature,
                 }
             )
             return queue.pop(0) if len(queue) > 1 else queue[0]
@@ -93,3 +94,13 @@ def sample_job():
         "region": "Remote",
         "score": 9,
     }
+
+
+@pytest.fixture(autouse=True)
+def usage_ledger(tmp_path, monkeypatch):
+    """Every test's Claude usage ledger goes to its own temp folder, never the repo's state/."""
+    from job_hunt import usage
+
+    path = tmp_path / "state" / usage.FILE_NAME
+    monkeypatch.setattr(usage, "ledger_path", lambda: path)
+    return path

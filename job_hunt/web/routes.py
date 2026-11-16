@@ -7,12 +7,15 @@ import json
 import queue
 import subprocess
 import sys
+import time
+from datetime import datetime
 from importlib import resources
 from typing import Any
 
 from fastapi import APIRouter, Body, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
+from job_hunt import usage
 from job_hunt.dedupe import backup_once, collapse_duplicates, find_job
 from job_hunt.pay import pay_for
 from job_hunt.web import paths
@@ -53,6 +56,31 @@ def health() -> dict:
     except Exception:
         ver = "unknown"
     return {"status": "ok", "version": ver, "project_dir": str(paths.project_dir())}
+
+
+# --- Claude usage ---------------------------------------------------------------
+
+_last_prune = 0.0
+
+
+@router.get("/usage")
+def claude_usage(since: str | None = None) -> dict:
+    """What this app has asked Claude for on the plan since `since` (an ISO
+    time, default the last 7 days), by feature. Counts only, for the home
+    dashboard's Claude card (ADR 0006)."""
+    global _last_prune
+    start = None
+    if since:
+        try:
+            start = datetime.fromisoformat(since.replace("Z", "+00:00"))
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail="since must be an ISO date and time") from e
+        if start.tzinfo is not None:
+            start = start.astimezone().replace(tzinfo=None)
+    if time.time() - _last_prune > 24 * 3600:
+        _last_prune = time.time()
+        usage.prune()
+    return usage.summary(since=start)
 
 
 # --- config -------------------------------------------------------------------

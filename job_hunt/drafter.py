@@ -81,6 +81,7 @@ ORIGINAL RESUME:
 
 Output ONLY the tailored resume in Markdown. No preamble."""}],
         temperature=0.2,
+        feature="drafts",
     )
     tailored_resume_path = out_dir / f"resume_{company_slug}.md"
     tailored_resume_path.write_text(resume_md)
@@ -109,6 +110,7 @@ CANDIDATE RESUME:
 
 Output ONLY the cover letter. No preamble."""}],
         temperature=0.3,
+        feature="drafts",
     )
     cover_path = out_dir / f"cover_letter_{company_slug}.md"
     cover_path.write_text(cover_md)
@@ -129,6 +131,7 @@ Output ONLY the cover letter. No preamble."""}],
 JOB DESCRIPTION:
 {jd_truncated}"""}],
         temperature=0.1,
+        feature="drafts",
     )
     info_path = out_dir / "application_info.txt"
     info_path.write_text(f"Source URL: {job_url}\n\n{info_txt}")
