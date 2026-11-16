@@ -31,6 +31,37 @@ def test_health(client):
     assert r.status_code == 200 and r.json()["status"] == "ok"
 
 
+def test_health_reports_the_build(client, monkeypatch):
+    c, _ = client
+    monkeypatch.setenv("AUTOPILOT_REVISION", "ea98b917b30d24b0ca5335d2b3627c8f6ddeb1fc")
+    assert c.get("/api/health").json()["revision"] == "ea98b917b30d"
+
+
+def test_health_says_dev_for_a_local_build(client, monkeypatch):
+    c, _ = client
+    monkeypatch.delenv("AUTOPILOT_REVISION", raising=False)
+    assert c.get("/api/health").json()["revision"] == "dev"
+
+
+def test_health_is_not_busy_when_idle(client):
+    c, _ = client
+    assert c.get("/api/health").json()["busy"] is False
+
+
+def test_health_is_busy_during_a_scan(client, monkeypatch):
+    c, _ = client
+    from job_hunt.web.scan_runner import ScanRunner
+    monkeypatch.setattr(ScanRunner, "running", property(lambda self: True))
+    assert c.get("/api/health").json()["busy"] is True
+
+
+def test_health_is_busy_during_a_company_job(client, monkeypatch):
+    c, _ = client
+    from job_hunt.web.job_runner import runner as jobs
+    monkeypatch.setattr(jobs, "running", True)
+    assert c.get("/api/health").json()["busy"] is True
+
+
 def test_ollama_test_endpoint_ok(client, monkeypatch):
     c, _ = client
     monkeypatch.setattr("job_hunt.llm_utils.list_ollama_models",

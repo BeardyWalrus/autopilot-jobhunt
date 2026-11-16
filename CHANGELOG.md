@@ -15,6 +15,10 @@ reconstructed from git history.
   away. Release tags and manual runs still publish too. See ADR 0003.
 
 ### Added
+- **Health check reports the build and whether the app is busy.** `GET /api/health`
+  now includes `revision` (the commit the image was built from, or `dev`) and
+  `busy` (a scan or company job is running), so the home dashboard can keep this
+  app updated and confirm it took. See ADR 0007.
 - **Claude usage for the home dashboard.** Every call through the Claude (Agent SDK)
   or Claude Code CLI provider is counted in `state/claude_usage.jsonl` (counts
   only: tokens, cost estimate, feature, no text), and `GET /api/usage?since=`
