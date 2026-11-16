@@ -124,7 +124,7 @@ def suggest_companies(
     provider = config.get("llm_provider") or "openrouter"
     logger.info(f"Suggesting {count} companies from your resume via {provider}...")
     raw = chat_with_llm(config, messages=[{"role": "user", "content": prompt}],
-                        temperature=0.4, on_token=on_token)
+                        temperature=0.4, on_token=on_token, feature="company ideas")
     suggestions = _parse_suggestions(raw)
 
     existing_domains = {c.get("search_domain", "").lower() for c in existing if c.get("search_domain")}
@@ -215,7 +215,7 @@ def review_companies(
         )
         logger.info(f"Reviewing companies {start + 1}-{start + len(batch)} of {len(companies)}...")
         raw = chat_with_llm(config, messages=[{"role": "user", "content": prompt}],
-                            temperature=0.2, on_token=on_token)
+                            temperature=0.2, on_token=on_token, feature="company review")
         by_name = {c.get("name", "").strip().lower(): j for j, c in enumerate(batch)}
         for rec in _parse_review(raw):
             j = by_name.get(rec["name"].strip().lower())
@@ -277,7 +277,7 @@ def suggest_search_terms(config: dict, resume: str, on_token=None) -> dict:
     logger.info(f"Suggesting job-search terms from your resume via {provider}...")
     prompt = SEARCH_TERMS_PROMPT.format(profile=profile, resume=resume[:3000])
     raw = chat_with_llm(config, messages=[{"role": "user", "content": prompt}],
-                        temperature=0.3, on_token=on_token)
+                        temperature=0.3, on_token=on_token, feature="search terms")
     terms = _parse_search_terms(raw)
     logger.info(
         f"Suggested keywords ({len(terms['search_keywords'])} chars) and "
@@ -335,7 +335,7 @@ def reconsider_companies(
         )
         logger.info(f"Reconsidering companies {start + 1}-{start + len(batch)} of {len(companies)}...")
         raw = chat_with_llm(config, messages=[{"role": "user", "content": prompt}],
-                            temperature=0.2, on_token=on_token)
+                            temperature=0.2, on_token=on_token, feature="company review")
         by_name = {c.get("name", "").strip().lower(): j for j, c in enumerate(batch)}
         for rec in _parse_review(raw):
             j = by_name.get(rec["name"].strip().lower())

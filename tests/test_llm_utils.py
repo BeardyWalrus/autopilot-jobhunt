@@ -416,3 +416,93 @@ def test_claude_cli_timeout(monkeypatch):
     monkeypatch.setattr(subprocess, "run", boom)
     with pytest.raises(RuntimeError, match="timed out"):
         llm_utils._chat_with_claude_cli({}, [{"role": "user", "content": "x"}], 0.1, 100)
+
+
+# --- usage ledger (ADR 0006) -----------------------------------------------------
+
+def _ledger(path):
+    import json as _json
+    return [_json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+
+
+def test_agent_sdk_call_is_counted_without_its_text(monkeypatch, usage_ledger):
+    def build(Assistant, Text, Result):
+        res = Result(result="the reply", cost=0.0123)
+        res.usage = {"input_tokens": 120, "output_tokens": 30, "cache_read_input_tokens": 5000,
+                     "cache_creation_input_tokens": 700}
+        return [Assistant([Text("the reply")]), res]
+
+    _fake_sdk(monkeypatch, messages=build)
+    llm_utils._chat_with_claude_agent_sdk({"claude_agent_sdk_api_key": "k", "claude_agent_sdk_model": "m"},
+                                          [{"role": "user", "content": "secret resume"}], 0.1, 100,
+                                          feature="scoring")
+    [entry] = _ledger(usage_ledger)
+    assert entry["feature"] == "scoring" and entry["model"] == "m" and entry["ok"] is True
+    assert (entry["input"], entry["output"], entry["cache_read"], entry["cache_create"]) == (120, 30, 5000, 700)
+    assert entry["cost_estimate_usd"] == 0.0123
+    assert "secret resume" not in usage_ledger.read_text() and "the reply" not in usage_ledger.read_text()
+
+
+def test_failed_agent_sdk_call_is_counted_and_still_raises(monkeypatch, usage_ledger):
+    _fake_sdk(monkeypatch, raises=_SDKError("boom"))
+    with pytest.raises(RuntimeError, match="Agent SDK call failed"):
+        llm_utils._chat_with_claude_agent_sdk({"claude_agent_sdk_api_key": "k"},
+                                              [{"role": "user", "content": "x"}], 0.1, 100, feature="drafts")
+    [entry] = _ledger(usage_ledger)
+    assert entry["feature"] == "drafts" and entry["ok"] is False and entry["error"]
+
+
+def test_agent_sdk_error_result_is_counted_as_failed(monkeypatch, usage_ledger):
+    _fake_sdk(monkeypatch, messages=_reply("x", is_error=True, subtype="error_max_turns"))
+    with pytest.raises(RuntimeError):
+        llm_utils._chat_with_claude_agent_sdk({"claude_agent_sdk_api_key": "k"},
+                                              [{"role": "user", "content": "x"}], 0.1, 100)
+    [entry] = _ledger(usage_ledger)
+    assert entry["ok"] is False and entry["error"] == "error_max_turns" and entry["feature"] == "other"
+
+
+def test_claude_cli_call_is_counted(monkeypatch, usage_ledger):
+    monkeypatch.setattr(subprocess, "run", _run_ok(
+        '{"result": "ok", "total_cost_usd": 0.02, "usage": {"input_tokens": 9, "output_tokens": 3}}'))
+    assert llm_utils._chat_with_claude_cli({}, [{"role": "user", "content": "hi"}], 0.1, 100,
+                                           feature="search terms") == "ok"
+    [entry] = _ledger(usage_ledger)
+    assert entry["feature"] == "search terms" and entry["model"] == "claude"
+    assert (entry["input"], entry["output"], entry["cost_estimate_usd"]) == (9, 3, 0.02)
+
+
+def test_failed_claude_cli_call_is_counted(monkeypatch, usage_ledger):
+    monkeypatch.setattr(subprocess, "run",
+                        lambda *a, **k: types.SimpleNamespace(returncode=1, stdout="", stderr="limit"))
+    with pytest.raises(RuntimeError, match="exited 1"):
+        llm_utils._chat_with_claude_cli({}, [{"role": "user", "content": "x"}], 0.1, 100)
+    [entry] = _ledger(usage_ledger)
+    assert entry["ok"] is False
+
+
+def test_providers_off_the_plan_are_not_counted(monkeypatch, usage_ledger):
+    monkeypatch.setattr(llm_utils, "_chat_with_ollama", lambda *a, **k: "OLL")
+    llm_utils.chat_with_llm({"llm_provider": "ollama"}, [], feature="scoring")
+    assert _ledger(usage_ledger) == []
+
+
+def test_chat_with_llm_passes_the_feature(monkeypatch):
+    seen = {}
+
+    def sdk(config, messages, temperature, max_tokens, on_token=None, feature="other"):
+        seen["feature"] = feature
+        return "SDK"
+
+    monkeypatch.setattr(llm_utils, "_chat_with_claude_agent_sdk", sdk)
+    llm_utils.chat_with_llm({"llm_provider": "claude_agent_sdk"}, [], feature="company ideas")
+    assert seen["feature"] == "company ideas"
+
+
+def test_an_unwritable_ledger_never_fails_the_call(monkeypatch, tmp_path):
+    from job_hunt import usage
+    blocker = tmp_path / "file"
+    blocker.write_text("not a folder")
+    monkeypatch.setattr(usage, "ledger_path", lambda: blocker / "state" / "claude_usage.jsonl")
+    _fake_sdk(monkeypatch, messages=_reply("fine"))
+    assert llm_utils._chat_with_claude_agent_sdk({"claude_agent_sdk_api_key": "k"},
+                                                 [{"role": "user", "content": "x"}], 0.1, 100) == "fine"

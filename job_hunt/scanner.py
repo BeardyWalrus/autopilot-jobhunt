@@ -471,6 +471,7 @@ def score_jobs(jobs: list[dict], resume: str, config: dict) -> list[dict]:
             config,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.1,
+            feature="scoring",
         )
     except Exception as e:
         # Let the caller's batch handler preserve these jobs unscored rather than

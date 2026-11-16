@@ -15,6 +15,11 @@ reconstructed from git history.
   away. Release tags and manual runs still publish too. See ADR 0003.
 
 ### Added
+- **Claude usage for the home dashboard.** Every call through the Claude (Agent SDK)
+  or Claude Code CLI provider is counted in `state/claude_usage.jsonl` (counts
+  only: tokens, cost estimate, feature, no text), and `GET /api/usage?since=`
+  reports it by feature, so the home dashboard's Claude card can show this app's
+  share of the plan. See ADR 0006.
 - **Pay on every role.** Each role shows its salary, day rate or hourly rate
   exactly as the listing words it, or **Not given** when the listing has no
   figure. It's read from the whole posting by pattern matching, never by a model

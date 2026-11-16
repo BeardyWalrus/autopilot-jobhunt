@@ -6,6 +6,7 @@ from typing import Any, cast
 
 from openai import APIConnectionError, OpenAI, RateLimitError
 
+from job_hunt import usage
 from job_hunt.log import get_logger
 
 logger = get_logger()
@@ -145,8 +146,31 @@ def _run_coro_sync(make_coro, timeout: float):
         return pool.submit(asyncio.run, _bounded()).result()
 
 
+def _record_call(feature: str, model: str, t0: float, result: Any = None, error: str = "") -> None:
+    """One entry in the usage ledger for a call on the Claude plan (ADR 0006).
+    `result` is the Agent SDK's ResultMessage or the CLI's JSON result: only
+    its token counts and cost estimate are kept, never its text."""
+    if isinstance(result, dict):
+        raw_usage, cost = result.get("usage"), result.get("total_cost_usd")
+    else:
+        raw_usage, cost = getattr(result, "usage", None), getattr(result, "total_cost_usd", None)
+    try:
+        cost_usd = float(cost) if cost is not None else None
+    except (TypeError, ValueError):
+        cost_usd = None
+    usage.record(
+        feature=feature,
+        model=model,
+        ok=not error,
+        tokens=usage.tokens_from(raw_usage),
+        cost_estimate_usd=cost_usd,
+        duration_ms=int((time.time() - t0) * 1000),
+        error=error,
+    )
+
+
 def _chat_with_claude_agent_sdk(config: dict, messages: list[dict], temperature: float,
-                                max_tokens: int, on_token=None) -> str:
+                                max_tokens: int, on_token=None, feature: str = "other") -> str:
     """One-shot completion through the Claude Agent SDK.
 
     The SDK drives the Claude Code CLI bundled in the claude-agent-sdk wheel, so
@@ -212,21 +236,32 @@ def _chat_with_claude_agent_sdk(config: dict, messages: list[dict], temperature:
                 final = msg
         return "".join(parts), final
 
+    result: Any = None
+    error = ""
     try:
-        text, result = _run_coro_sync(_run, _AGENT_SDK_TIMEOUT)
-    except CLINotFoundError:
-        raise RuntimeError(
-            "Claude Code CLI not found. It ships inside the claude-agent-sdk package — "
-            "reinstall it with: pip install --force-reinstall claude-agent-sdk"
-        )
-    except TimeoutError:
-        raise RuntimeError(f"Claude Agent SDK call timed out after {_AGENT_SDK_TIMEOUT:.0f}s.")
-    except ClaudeSDKError as e:
-        raise RuntimeError(f"Claude Agent SDK call failed: {e}") from e
+        try:
+            text, result = _run_coro_sync(_run, _AGENT_SDK_TIMEOUT)
+        except CLINotFoundError:
+            error = "Claude Code CLI not found"
+            raise RuntimeError(
+                "Claude Code CLI not found. It ships inside the claude-agent-sdk package — "
+                "reinstall it with: pip install --force-reinstall claude-agent-sdk"
+            )
+        except TimeoutError:
+            error = f"timed out after {_AGENT_SDK_TIMEOUT:.0f}s"
+            raise RuntimeError(f"Claude Agent SDK call timed out after {_AGENT_SDK_TIMEOUT:.0f}s.")
+        except ClaudeSDKError as e:
+            error = type(e).__name__
+            raise RuntimeError(f"Claude Agent SDK call failed: {e}") from e
 
-    if result is not None and result.is_error:
-        detail = result.result or getattr(result, "errors", None) or result.subtype
-        raise RuntimeError(f"Claude Agent SDK call failed ({result.subtype}): {detail}")
+        if result is not None and result.is_error:
+            error = str(result.subtype or "error")
+            detail = result.result or getattr(result, "errors", None) or result.subtype
+            raise RuntimeError(f"Claude Agent SDK call failed ({result.subtype}): {detail}")
+    except BaseException as e:
+        _record_call(feature, model, t0, result, error or type(e).__name__)
+        raise
+    _record_call(feature, model, t0, result)
     if result is not None and result.result:
         text = result.result
     elapsed = time.time() - t0
@@ -263,8 +298,34 @@ def _chat_with_anthropic(config: dict, messages: list[dict], temperature: float,
     return text
 
 
-def _chat_with_claude_cli(config: dict, messages: list[dict], temperature: float, max_tokens: int) -> str:
+def _chat_with_claude_cli(config: dict, messages: list[dict], temperature: float, max_tokens: int,
+                          feature: str = "other") -> str:
     model = config.get("claude_cli_model", "")
+    t0 = time.time()
+    try:
+        text, result = _run_claude_cli(model, messages)
+    except Exception as e:
+        _record_call(feature, model or "claude", t0, getattr(e, "result", None), _short_error(e))
+        raise
+    _record_call(feature, model or "claude", t0, result)
+    return text
+
+
+def _short_error(e: BaseException) -> str:
+    return str(e).splitlines()[0][:120] if str(e) else type(e).__name__
+
+
+class _CLIError(RuntimeError):
+    """A failed CLI call, carrying its JSON result (if any) for the ledger."""
+
+    def __init__(self, message: str, result: Any = None):
+        super().__init__(message)
+        self.result = result
+
+
+def _run_claude_cli(model: str, messages: list[dict]) -> tuple[str, Any]:
+    """Runs `claude --print` once. Returns the reply text and the JSON result
+    event (for its token counts)."""
     logger.debug(f"LLM call → Claude CLI{' / ' + model if model else ''}")
     t0 = time.time()
 
@@ -300,19 +361,26 @@ def _chat_with_claude_cli(config: dict, messages: list[dict], temperature: float
         raise RuntimeError("claude CLI timed out after 300s.")
 
     if result.returncode != 0:
-        raise RuntimeError(f"claude CLI exited {result.returncode}: {result.stderr.strip()}")
+        try:
+            failed = json.loads(result.stdout)
+        except (json.JSONDecodeError, TypeError):
+            failed = None
+        raise _CLIError(f"claude CLI exited {result.returncode}: {result.stderr.strip()}",
+                        failed if isinstance(failed, dict) else None)
 
+    event: Any = None
     try:
         data = json.loads(result.stdout)
         if isinstance(data, dict):
+            event = data
             text = data.get("result")
             if text is None:
                 raise KeyError("no 'result' field in output")
         elif isinstance(data, list):
-            result_event = next((e for e in data if isinstance(e, dict) and e.get("type") == "result"), None)
-            if result_event is None:
+            event = next((e for e in data if isinstance(e, dict) and e.get("type") == "result"), None)
+            if event is None:
                 raise KeyError("no 'result' event found in output")
-            text = result_event["result"]
+            text = event["result"]
         else:
             raise TypeError(f"unexpected output type: {type(data)}")
     except (json.JSONDecodeError, KeyError, TypeError, AttributeError) as e:
@@ -320,7 +388,7 @@ def _chat_with_claude_cli(config: dict, messages: list[dict], temperature: float
 
     elapsed = time.time() - t0
     logger.debug(f"LLM response: {len(text)} chars in {elapsed:.1f}s via claude CLI")
-    return text
+    return text, event
 
 
 def chat_with_llm(
@@ -329,8 +397,13 @@ def chat_with_llm(
     temperature: float = 0.1,
     max_tokens: int = 4096,
     on_token=None,
+    feature: str = "other",
 ) -> str:
     """Dispatch a chat completion to the configured provider.
+
+    `feature` names what the call is for (scoring, drafts, ...). Calls on the
+    Claude plan (Agent SDK and Claude Code CLI) are counted under it in the
+    usage ledger (job_hunt/usage.py, ADR 0006); other providers aren't.
 
     If on_token is given, it's called with each text chunk as it streams —
     Ollama and OpenRouter stream natively and the Claude Agent SDK streams block
@@ -341,11 +414,11 @@ def chat_with_llm(
     if provider == "ollama":
         return _chat_with_ollama(config, messages, temperature, max_tokens, on_token)
     if provider == "claude_agent_sdk":
-        return _chat_with_claude_agent_sdk(config, messages, temperature, max_tokens, on_token)
+        return _chat_with_claude_agent_sdk(config, messages, temperature, max_tokens, on_token, feature)
     if provider == "anthropic":
         text = _chat_with_anthropic(config, messages, temperature, max_tokens)
     elif provider == "claude_cli":
-        text = _chat_with_claude_cli(config, messages, temperature, max_tokens)
+        text = _chat_with_claude_cli(config, messages, temperature, max_tokens, feature)
     else:
         return chat_with_fallback(
             _make_openrouter_client(config), config, messages, temperature, max_tokens, on_token
