@@ -28,3 +28,4 @@ ADR that supersedes the old one, and set the old one's status to
 | [0004](0004-test-the-web-frontend-in-ci.md) | Test the web frontend in CI with Vitest | Accepted | 2026-11-13 |
 | [0005](0005-read-pay-from-the-listing-text.md) | Read pay from the listing text, never from a model | Accepted | 2026-11-13 |
 | [0006](0006-count-claude-calls-in-a-local-ledger.md) | Count Claude calls in a local, counts-only ledger | Accepted | 2026-11-16 |
+| [0007](0007-health-reports-the-build-and-busy.md) | The health check reports the build and whether the app is busy | Accepted | 2026-11-16 |

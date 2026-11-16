@@ -32,7 +32,10 @@ RUN pip install --no-cache-dir --upgrade pip \
 
 # The project files (config.json, companies.json, resume/, state/) live in a
 # mounted volume. The container binds 0.0.0.0; publish it to 127.0.0.1 on the host.
+# Which commit this image was built from, for the home dashboard's updates (ADR 0007).
+ARG APP_REVISION=dev
 ENV AUTOPILOT_HOME=/data \
+    AUTOPILOT_REVISION=$APP_REVISION \
     AUTOPILOT_WEB_HOST=0.0.0.0 \
     AUTOPILOT_WEB_PORT=8000
 

@@ -4,6 +4,7 @@ All endpoints operate on the project directory (see paths.py) so the CLI and
 the UI read and write the same config.json / companies.json / resume / state.
 """
 import json
+import os
 import queue
 import subprocess
 import sys
@@ -55,7 +56,15 @@ def health() -> dict:
         ver = version("autopilot-jobhunt")
     except Exception:
         ver = "unknown"
-    return {"status": "ok", "version": ver, "project_dir": str(paths.project_dir())}
+    return {
+        "status": "ok",
+        "version": ver,
+        "project_dir": str(paths.project_dir()),
+        # The commit the image was built from, for the home dashboard's
+        # updates, and whether a restart now would cut work off (ADR 0007).
+        "revision": (os.environ.get("AUTOPILOT_REVISION") or "dev").strip()[:12] or "dev",
+        "busy": bool(runner.running or jobs.running),
+    }
 
 
 # --- Claude usage ---------------------------------------------------------------
